@@ -2,7 +2,7 @@ FROM node:22-bookworm-slim
 
 WORKDIR /app
 
-ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends openssl ca-certificates \
@@ -13,6 +13,8 @@ RUN npm ci
 
 COPY . .
 RUN npm run prisma:generate && npm run build
+
+ENV NODE_ENV=production
 
 EXPOSE 3000
 
