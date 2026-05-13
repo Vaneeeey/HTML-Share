@@ -12,10 +12,14 @@ COPY package*.json ./
 RUN npm ci
 
 COPY . .
-RUN npm run prisma:generate && npm run build
+RUN npm run prisma:generate \
+  && npm run build \
+  && cp -r public .next/standalone/ \
+  && mkdir -p .next/standalone/.next \
+  && cp -r .next/static .next/standalone/.next/
 
 ENV NODE_ENV=production
 
 EXPOSE 3000
 
-CMD ["sh", "-c", "npm run prisma:deploy && npm run start"]
+CMD ["sh", "-c", "npm run prisma:deploy && HOSTNAME=0.0.0.0 node .next/standalone/server.js"]
