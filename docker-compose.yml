@@ -1,0 +1,13 @@
+services:
+  html-share:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: file:../data/app.db
+      APP_SECRET: ${APP_SECRET}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
