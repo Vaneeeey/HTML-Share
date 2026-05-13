@@ -14,8 +14,20 @@ function getSecret() {
   return secret;
 }
 
+function getAdminPassword() {
+  const password = process.env.ADMIN_PASSWORD;
+  if (!password) {
+    throw new Error("ADMIN_PASSWORD is required");
+  }
+  return password;
+}
+
+function getSigningKey() {
+  return crypto.createHmac("sha256", getSecret()).update(getAdminPassword()).digest();
+}
+
 function sign(payload: string) {
-  return crypto.createHmac("sha256", getSecret()).update(payload).digest("base64url");
+  return crypto.createHmac("sha256", getSigningKey()).update(payload).digest("base64url");
 }
 
 export function createAdminToken() {
