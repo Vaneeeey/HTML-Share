@@ -11,6 +11,7 @@ export function serializePage(page: Page & { _count?: { comments: number } }) {
     entryPath: page.entryPath,
     uploadType: page.uploadType,
     originalName: page.originalName,
+    hasAccessPassword: Boolean(page.accessPasswordHash),
     createdAt: page.createdAt.toISOString(),
     updatedAt: page.updatedAt.toISOString(),
     commentCount: page._count?.comments ?? 0,

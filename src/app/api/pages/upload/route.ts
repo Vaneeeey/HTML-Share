@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "File is required." }, { status: 400 });
     }
 
-    const page = await createPageFromUpload(file);
+    const page = await createPageFromUpload(file, formData.get("accessPassword"));
     return NextResponse.json({ page: serializePage(page) }, { status: 201 });
   } catch (error) {
     const status = error instanceof UploadError ? error.status : 500;

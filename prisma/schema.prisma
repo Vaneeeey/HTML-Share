@@ -19,6 +19,7 @@ model Page {
   entryPath    String
   uploadType   String
   originalName String
+  accessPasswordHash String?
   comments     Comment[]
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt

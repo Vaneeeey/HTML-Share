@@ -4,7 +4,9 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
 export const adminCookieName = "html_share_admin";
-const maxAgeSeconds = 60 * 60 * 24 * 14;
+export const identityCookieName = "html_share_identity";
+const adminMaxAgeSeconds = 60 * 60 * 24 * 14;
+export const identityMaxAgeSeconds = 60 * 60 * 24 * 90;
 
 function getSecret() {
   const secret = process.env.APP_SECRET;
@@ -31,7 +33,7 @@ function sign(payload: string) {
 }
 
 export function createAdminToken() {
-  const expiresAt = Date.now() + maxAgeSeconds * 1000;
+  const expiresAt = Date.now() + adminMaxAgeSeconds * 1000;
   const payload = `admin.${expiresAt}`;
   return `${payload}.${sign(payload)}`;
 }
@@ -63,6 +65,59 @@ export function isAdminRequest(request: NextRequest) {
   return verifyAdminToken(request.cookies.get(adminCookieName)?.value);
 }
 
+function signIdentityPayload(payload: string) {
+  return crypto.createHmac("sha256", getSecret()).update(payload).digest("base64url");
+}
+
+export function normalizeIdentityName(value: unknown) {
+  const name = String(value ?? "").replace(/\s+/g, " ").trim();
+  if (!name) throw new Error("Name is required.");
+  if (name.length > 80) throw new Error("Name is too long.");
+  return name;
+}
+
+export function createIdentityToken(name: string) {
+  const payload = Buffer.from(
+    JSON.stringify({
+      name: normalizeIdentityName(name),
+      expiresAt: Date.now() + identityMaxAgeSeconds * 1000,
+    }),
+  ).toString("base64url");
+  return `${payload}.${signIdentityPayload(payload)}`;
+}
+
+export function verifyIdentityToken(token?: string) {
+  if (!token) return null;
+
+  const parts = token.split(".");
+  if (parts.length !== 2) return null;
+
+  const [payload, actual] = parts;
+  const expected = signIdentityPayload(payload);
+  if (expected.length !== actual.length) return null;
+  if (!crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(actual))) return null;
+
+  try {
+    const data = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as {
+      name?: unknown;
+      expiresAt?: unknown;
+    };
+    if (typeof data.expiresAt !== "number" || data.expiresAt <= Date.now()) return null;
+    return { name: normalizeIdentityName(data.name) };
+  } catch {
+    return null;
+  }
+}
+
+export async function getIdentityFromCookies() {
+  const cookieStore = await cookies();
+  return verifyIdentityToken(cookieStore.get(identityCookieName)?.value);
+}
+
+export function getIdentityFromRequest(request: NextRequest) {
+  return verifyIdentityToken(request.cookies.get(identityCookieName)?.value);
+}
+
 export function unauthorized() {
   return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 }
@@ -72,7 +127,17 @@ export function adminCookieOptions() {
     httpOnly: true,
     sameSite: "lax" as const,
     secure: process.env.NODE_ENV === "production",
-    maxAge: maxAgeSeconds,
+    maxAge: adminMaxAgeSeconds,
+    path: "/",
+  };
+}
+
+export function identityCookieOptions() {
+  return {
+    httpOnly: true,
+    sameSite: "lax" as const,
+    secure: process.env.NODE_ENV === "production",
+    maxAge: identityMaxAgeSeconds,
     path: "/",
   };
 }

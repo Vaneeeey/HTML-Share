@@ -1,6 +1,11 @@
 import crypto from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { adminCookieName, adminCookieOptions, createAdminToken } from "@/lib/auth";
+import {
+  adminCookieName,
+  adminCookieOptions,
+  createAdminToken,
+  getIdentityFromRequest,
+} from "@/lib/auth";
 
 export const runtime = "nodejs";
 
@@ -22,7 +27,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid password." }, { status: 401 });
   }
 
-  const response = NextResponse.json({ ok: true });
+  const identity = getIdentityFromRequest(request);
+  const response = NextResponse.json({ ok: true, hasIdentity: Boolean(identity) });
   response.cookies.set(adminCookieName, createAdminToken(), adminCookieOptions());
   return response;
 }

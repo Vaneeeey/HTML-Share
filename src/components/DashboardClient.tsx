@@ -6,12 +6,14 @@ import { ExternalLink, FileArchive, FileUp, RefreshCw, Trash2 } from "lucide-rea
 import type { SerializedPage } from "@/lib/serializers";
 
 type Props = {
+  identityName: string;
   initialPages: SerializedPage[];
 };
 
-export function DashboardClient({ initialPages }: Props) {
+export function DashboardClient({ identityName, initialPages }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [pages, setPages] = useState(initialPages);
+  const [accessPassword, setAccessPassword] = useState("");
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -36,6 +38,7 @@ export function DashboardClient({ initialPages }: Props) {
 
     const formData = new FormData();
     formData.append("file", file);
+    formData.append("accessPassword", accessPassword);
 
     const response = await fetch("/api/pages/upload", { method: "POST", body: formData });
     const data = (await response.json().catch(() => ({}))) as {
@@ -52,6 +55,7 @@ export function DashboardClient({ initialPages }: Props) {
 
     setPages((current) => [data.page!, ...current]);
     setNotice(`已生成分享链接：/s/${data.page.slug}`);
+    setAccessPassword("");
     if (inputRef.current) inputRef.current.value = "";
   }
 
@@ -71,7 +75,7 @@ export function DashboardClient({ initialPages }: Props) {
         <div>
           <p className="eyebrow">Internal Review Links</p>
           <h1>HTML 评论工作台</h1>
-          <p className="muted">上传单个 HTML 或静态 ZIP 包，生成可匿名评论的内部分享链接。</p>
+          <p className="muted">当前身份：{identityName}。上传页面并生成带访问密码的内部评论链接。</p>
         </div>
         <button className="icon-button" onClick={refreshPages} title="刷新列表" type="button">
           <RefreshCw size={18} />
@@ -84,6 +88,17 @@ export function DashboardClient({ initialPages }: Props) {
             <FileUp size={22} />
             <span>选择 .html / .htm / .zip 文件</span>
             <input ref={inputRef} accept=".html,.htm,.zip" name="file" type="file" />
+          </label>
+          <label className="field upload-password-field">
+            <span>分享访问密码</span>
+            <input
+              minLength={4}
+              onChange={(event) => setAccessPassword(event.target.value)}
+              placeholder="至少 4 位，分享给评论者"
+              required
+              type="password"
+              value={accessPassword}
+            />
           </label>
           <button className="primary-button" disabled={uploading} type="submit">
             <FileArchive size={18} />
@@ -109,7 +124,8 @@ export function DashboardClient({ initialPages }: Props) {
                 <div>
                   <p className="page-title">{page.title}</p>
                   <p className="muted">
-                    {page.originalName} · {page.uploadType.toUpperCase()} · {page.commentCount} 条评论
+                    {page.originalName} · {page.uploadType.toUpperCase()} · {page.commentCount} 条评论 ·{" "}
+                    {page.hasAccessPassword ? "已设置访问密码" : "未设置访问密码"}
                   </p>
                 </div>
                 <div className="row-actions">

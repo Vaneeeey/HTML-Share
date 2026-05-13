@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import AdmZip from "adm-zip";
+import { hashAccessPassword } from "@/lib/access";
 import { prisma } from "@/lib/prisma";
 import { newId, newSlug } from "@/lib/slug";
 import { normalizeRelativePath, pageUploadDir } from "@/lib/paths";
@@ -124,9 +125,10 @@ async function writeZip(file: File, pageId: string) {
   };
 }
 
-export async function createPageFromUpload(file: File) {
+export async function createPageFromUpload(file: File, accessPassword: unknown) {
   const kind = detectKind(file);
   assertSize(file, kind);
+  const accessPasswordHash = hashAccessPassword(accessPassword);
 
   const pageId = newId();
   const dir = pageUploadDir(pageId);
@@ -143,6 +145,7 @@ export async function createPageFromUpload(file: File) {
         entryPath: written.entryPath,
         uploadType: kind,
         originalName: file.name,
+        accessPasswordHash,
       },
     });
   } catch (error) {

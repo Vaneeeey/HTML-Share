@@ -122,8 +122,9 @@ h2 {
 
 .upload-panel form {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(260px, 1fr) minmax(220px, 320px) auto;
   gap: 14px;
+  align-items: end;
 }
 
 .file-drop {
@@ -140,6 +141,10 @@ h2 {
 
 .file-drop input {
   width: 100%;
+}
+
+.upload-password-field {
+  align-self: stretch;
 }
 
 .field {
@@ -167,7 +172,8 @@ h2 {
 
 .primary-button,
 .secondary-button,
-.icon-button {
+.icon-button,
+.text-button {
   min-height: 42px;
   border-radius: 8px;
   display: inline-flex;
@@ -220,6 +226,16 @@ h2 {
 
 .icon-button.danger {
   color: var(--danger);
+}
+
+.text-button {
+  min-height: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent-strong);
+  padding: 0;
+  font-size: 13px;
+  text-decoration: underline;
 }
 
 .error-text,
@@ -302,6 +318,14 @@ h2 {
   font-size: 28px;
 }
 
+.identity-line {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .frame-stage {
   padding: 14px;
   background:
@@ -322,6 +346,19 @@ h2 {
 .comment-list {
   display: grid;
   gap: 10px;
+}
+
+.access-card {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 253, 247, 0.72);
+}
+
+.access-card h2 {
+  font-size: 18px;
 }
 
 .comment-item,

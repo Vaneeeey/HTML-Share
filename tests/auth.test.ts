@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { createAdminToken, verifyAdminToken } from "@/lib/auth";
+import {
+  createAdminToken,
+  createIdentityToken,
+  verifyAdminToken,
+  verifyIdentityToken,
+} from "@/lib/auth";
 
 function withAuthEnv(password: string, callback: () => void) {
   const originalSecret = process.env.APP_SECRET;
@@ -31,6 +36,25 @@ describe("admin auth tokens", () => {
       process.env.ADMIN_PASSWORD = "second-password";
 
       expect(verifyAdminToken(token)).toBe(false);
+    });
+  });
+});
+
+describe("identity tokens", () => {
+  it("round-trips the signed display name", () => {
+    withAuthEnv("admin-password", () => {
+      const token = createIdentityToken("  Lin  ");
+
+      expect(verifyIdentityToken(token)).toEqual({ name: "Lin" });
+    });
+  });
+
+  it("rejects tampered identity tokens", () => {
+    withAuthEnv("admin-password", () => {
+      const token = createIdentityToken("Lin");
+      const [payload] = token.split(".");
+
+      expect(verifyIdentityToken(`${payload}.bad-signature`)).toBeNull();
     });
   });
 });

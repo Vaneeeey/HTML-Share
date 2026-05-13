@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isShareAccessRequest } from "@/lib/access";
+import { getIdentityFromRequest } from "@/lib/auth";
 import { assertCommentInput } from "@/lib/comments";
 import { prisma } from "@/lib/prisma";
 import { newId } from "@/lib/slug";
@@ -6,7 +8,10 @@ import { serializeComment } from "@/lib/serializers";
 
 export const runtime = "nodejs";
 
-export async function GET(_request: NextRequest, context: { params: Promise<{ slug: string }> }) {
+export async function GET(request: NextRequest, context: { params: Promise<{ slug: string }> }) {
+  const identity = getIdentityFromRequest(request);
+  if (!identity) return NextResponse.json({ error: "Name is required." }, { status: 401 });
+
   const { slug } = await context.params;
   const page = await prisma.page.findUnique({
     where: { slug },
@@ -14,15 +19,30 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ sl
   });
 
   if (!page) return NextResponse.json({ error: "Page not found." }, { status: 404 });
+  if (!page.accessPasswordHash) {
+    return NextResponse.json({ error: "Access password is not configured." }, { status: 403 });
+  }
+  if (!isShareAccessRequest(request, page)) {
+    return NextResponse.json({ error: "Access password is required." }, { status: 403 });
+  }
 
   return NextResponse.json({ comments: page.comments.map(serializeComment) });
 }
 
 export async function POST(request: NextRequest, context: { params: Promise<{ slug: string }> }) {
+  const identity = getIdentityFromRequest(request);
+  if (!identity) return NextResponse.json({ error: "Name is required." }, { status: 401 });
+
   const { slug } = await context.params;
   const page = await prisma.page.findUnique({ where: { slug } });
 
   if (!page) return NextResponse.json({ error: "Page not found." }, { status: 404 });
+  if (!page.accessPasswordHash) {
+    return NextResponse.json({ error: "Access password is not configured." }, { status: 403 });
+  }
+  if (!isShareAccessRequest(request, page)) {
+    return NextResponse.json({ error: "Access password is required." }, { status: 403 });
+  }
 
   try {
     const input = assertCommentInput((await request.json()) as Record<string, unknown>);
@@ -30,6 +50,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ sl
       data: {
         id: newId(),
         pageId: page.id,
+        authorName: identity.name,
         ...input,
       },
     });

@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, CheckCircle2, ExternalLink, LocateFixed, Trash2, Undo2 } from "lucide-react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowLeft, CheckCircle2, ExternalLink, KeyRound, LocateFixed, Trash2, Undo2 } from "lucide-react";
 import type { SerializedComment, SerializedPage } from "@/lib/serializers";
 
 type Props = {
@@ -13,6 +13,11 @@ type Props = {
 export function PageReviewClient({ page, initialComments }: Props) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [comments, setComments] = useState(initialComments);
+  const [hasAccessPassword, setHasAccessPassword] = useState(page.hasAccessPassword);
+  const [accessPassword, setAccessPassword] = useState("");
+  const [passwordNotice, setPasswordNotice] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [savingPassword, setSavingPassword] = useState(false);
   const iframeSrc = `/uploads/${page.id}/${page.entryPath}`;
   const openCount = useMemo(
     () => comments.filter((comment) => comment.status !== "resolved").length,
@@ -70,6 +75,34 @@ export function PageReviewClient({ page, initialComments }: Props) {
     }
   }
 
+  async function updateAccessPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSavingPassword(true);
+    setPasswordError("");
+    setPasswordNotice("");
+
+    const response = await fetch(`/api/pages/${page.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ accessPassword }),
+    });
+    const data = (await response.json().catch(() => ({}))) as {
+      error?: string;
+      page?: SerializedPage;
+    };
+
+    setSavingPassword(false);
+
+    if (!response.ok || !data.page) {
+      setPasswordError(data.error ?? "访问密码更新失败");
+      return;
+    }
+
+    setAccessPassword("");
+    setHasAccessPassword(data.page.hasAccessPassword);
+    setPasswordNotice("访问密码已更新。旧的评论端访问授权已失效。");
+  }
+
   return (
     <div className="review-shell admin-review">
       <aside className="review-sidebar">
@@ -86,6 +119,33 @@ export function PageReviewClient({ page, initialComments }: Props) {
           <ExternalLink size={16} />
           打开分享页
         </Link>
+
+        <form className="access-card" onSubmit={updateAccessPassword}>
+          <div>
+            <p className="eyebrow">Access Password</p>
+            <h2>{hasAccessPassword ? "重置访问密码" : "设置访问密码"}</h2>
+            <p className="muted">
+              {hasAccessPassword ? "重置后，旧访问授权会立即失效。" : "旧页面需要设置密码后才能被评论者访问。"}
+            </p>
+          </div>
+          <label className="field">
+            <span>新访问密码</span>
+            <input
+              minLength={4}
+              onChange={(event) => setAccessPassword(event.target.value)}
+              placeholder="至少 4 位"
+              required
+              type="password"
+              value={accessPassword}
+            />
+          </label>
+          {passwordError ? <p className="error-text">{passwordError}</p> : null}
+          {passwordNotice ? <p className="success-text">{passwordNotice}</p> : null}
+          <button className="secondary-button" disabled={savingPassword} type="submit">
+            <KeyRound size={16} />
+            {savingPassword ? "保存中" : "保存访问密码"}
+          </button>
+        </form>
 
         <div className="comment-list">
           {comments.length === 0 ? (

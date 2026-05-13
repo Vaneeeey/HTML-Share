@@ -3,10 +3,16 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LogIn } from "lucide-react";
+import { IdentityForm } from "@/components/IdentityForm";
 
-export function LoginForm() {
+type Props = {
+  initialIdentityStep?: boolean;
+};
+
+export function LoginForm({ initialIdentityStep = false }: Props) {
   const router = useRouter();
   const [password, setPassword] = useState("");
+  const [identityStep, setIdentityStep] = useState(initialIdentityStep);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -23,14 +29,37 @@ export function LoginForm() {
 
     setLoading(false);
 
+    const data = (await response.json().catch(() => ({}))) as {
+      error?: string;
+      hasIdentity?: boolean;
+    };
+
     if (!response.ok) {
-      const data = (await response.json().catch(() => ({}))) as { error?: string };
       setError(data.error ?? "登录失败");
+      return;
+    }
+
+    if (!data.hasIdentity) {
+      setIdentityStep(true);
       return;
     }
 
     router.push("/dashboard");
     router.refresh();
+  }
+
+  if (identityStep) {
+    return (
+      <IdentityForm
+        buttonLabel="进入工作台"
+        description="管理员密码已通过。再输入你的名字，后续操作会使用这个身份。"
+        onSaved={() => {
+          router.push("/dashboard");
+          router.refresh();
+        }}
+        title="设置你的名字"
+      />
+    );
   }
 
   return (
