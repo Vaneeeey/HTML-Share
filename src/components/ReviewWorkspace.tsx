@@ -35,6 +35,13 @@ type Anchor = {
 
 type Mode = "comment" | "interact";
 
+type LocateHint = {
+  title?: string;
+  lines?: string[];
+  interactionPath?: string[];
+  stableAncestor?: Record<string, unknown> | null;
+};
+
 type Props = {
   identityName: string;
   initialComments: SerializedComment[];
@@ -89,6 +96,7 @@ export function ReviewWorkspace({
   const [editingReplyId, setEditingReplyId] = useState<string | null>(null);
   const [editBody, setEditBody] = useState("");
   const [locateNotice, setLocateNotice] = useState("");
+  const [locateHint, setLocateHint] = useState<LocateHint | null>(null);
   const [accessPassword, setAccessPassword] = useState("");
   const [settingsNotice, setSettingsNotice] = useState("");
   const [settingsError, setSettingsError] = useState("");
@@ -120,6 +128,7 @@ export function ReviewWorkspace({
       setEditBody("");
       setReplyError("");
       setLocateNotice("");
+      setLocateHint(null);
       if (clearFrameSelection) postToFrame({ type: "clear-selection" });
     },
     [postToFrame],
@@ -151,6 +160,16 @@ export function ReviewWorkspace({
     const top = Math.min(Math.max(margin, anchor.y), Math.max(margin, stageHeight - 260));
     return { left, top, width: Math.min(preferredWidth, stageWidth - margin * 2) };
   }, [stageSize]);
+
+  const detailStyle = useCallback((anchor: Anchor | null): CSSProperties => {
+    if (anchor) return floatingStyle(anchor, 520);
+    const margin = 16;
+    return {
+      right: margin,
+      top: 72,
+      width: Math.min(520, Math.max(320, stageSize.width - margin * 2)),
+    };
+  }, [floatingStyle, stageSize.width]);
 
   useEffect(() => {
     const stage = stageRef.current;
@@ -188,20 +207,24 @@ export function ReviewWorkspace({
         const id = String(message.id);
         const comment = comments.find((item) => item.id === id);
         setLocateNotice("");
+        setLocateHint(null);
         setActiveCommentId(id);
         setActiveAnchor(frameAnchorToStage(message.anchor ?? {}) ?? hoverAnchor);
-        if (comment) postToFrame({ type: "locate", comment });
+        if (comment) postToFrame({ type: "locate", comment, reason: "user-open", openDetail: true, replay: false });
       }
       if (message.type === "comment-located") {
         const id = String(message.id);
-        setActiveCommentId(id);
-        setActiveAnchor(frameAnchorToStage(message.anchor ?? {}) ?? null);
+        const nextAnchor = frameAnchorToStage(message.anchor ?? {}) ?? null;
+        if (message.openDetail) setActiveCommentId(id);
+        setActiveAnchor((current) => (activeCommentId === id || message.openDetail ? nextAnchor : current));
         setLocateNotice("");
+        setLocateHint(null);
       }
       if (message.type === "comment-missing") {
         const id = String(message.id);
-        setActiveCommentId(id);
+        if (message.openDetail) setActiveCommentId(id);
         setActiveAnchor(null);
+        setLocateHint((message.hint ?? null) as LocateHint | null);
         setLocateNotice("当前页面状态里还没有这个批注元素。请先在页面中打开对应弹窗或完成当时的交互，元素出现后会自动定位。");
       }
       if (message.type === "canvas-click") {
@@ -211,7 +234,7 @@ export function ReviewWorkspace({
 
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [closeActiveComment, comments, frameAnchorToStage, hoverAnchor, postToFrame, syncFrame]);
+  }, [activeCommentId, closeActiveComment, comments, frameAnchorToStage, hoverAnchor, postToFrame, syncFrame]);
 
   useEffect(() => syncFrame(), [comments, mode, syncFrame]);
 
@@ -261,6 +284,7 @@ export function ReviewWorkspace({
     setTargetAnchor(null);
     setDraftBody("");
     setLocateNotice("");
+    setLocateHint(null);
     postToFrame({ type: "clear-selection" });
     syncFrame(next);
   }
@@ -491,9 +515,11 @@ export function ReviewWorkspace({
               setEditBody(reply.body);
             }}
             onSetStatus={setStatus}
+            locateHint={locateHint}
+            locateNotice={locateNotice}
             replyBody={replyBody}
             replyError={replyError}
-            style={floatingStyle(activeAnchor, 520)}
+            style={detailStyle(activeAnchor)}
           />
         ) : null}
       </main>
@@ -520,8 +546,9 @@ export function ReviewWorkspace({
             setTargetAnchor(null);
             setActiveCommentId(comment.id);
             setActiveAnchor(null);
+            setLocateHint(null);
             setLocateNotice("正在定位批注。如果它属于弹窗、菜单或交互后才出现的内容，请先在页面里打开对应状态。");
-            postToFrame({ type: "locate", comment });
+            postToFrame({ type: "locate", comment, reason: "user-open", openDetail: true });
           }}
         />
       ) : null}
@@ -615,6 +642,8 @@ function CommentDetail({
   onSetEditComment,
   onSetEditReply,
   onSetStatus,
+  locateHint,
+  locateNotice,
   replyBody,
   replyError,
   style,
@@ -635,6 +664,8 @@ function CommentDetail({
   onSetEditComment: (comment: SerializedComment) => void;
   onSetEditReply: (reply: SerializedReply) => void;
   onSetStatus: (comment: SerializedComment, status: "open" | "resolved") => void;
+  locateHint: LocateHint | null;
+  locateNotice: string;
   replyBody: string;
   replyError: string;
   style: CSSProperties;
@@ -693,6 +724,32 @@ function CommentDetail({
           )}
         </div>
       </section>
+
+      {locateNotice || locateHint ? (
+        <section className="locate-hint">
+          {locateNotice ? <p>{locateNotice}</p> : null}
+          {locateHint?.interactionPath?.length ? (
+            <div>
+              <strong>打开路径</strong>
+              <ol>
+                {locateHint.interactionPath.map((item, index) => (
+                  <li key={`${item}-${index}`}>{item}</li>
+                ))}
+              </ol>
+            </div>
+          ) : null}
+          {locateHint?.lines?.length ? (
+            <div>
+              <strong>目标层级</strong>
+              <ol>
+                {locateHint.lines.slice(0, 8).map((line, index) => (
+                  <li key={`${line}-${index}`}>{line}</li>
+                ))}
+              </ol>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
 
       <div className="reply-list">
         {comment.replies.map((reply) => (

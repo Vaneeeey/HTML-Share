@@ -735,6 +735,8 @@ h2 {
 .comment-detail-card {
   border-radius: 18px;
   overflow: hidden;
+  max-height: calc(100% - 96px);
+  overflow-y: auto;
 }
 
 .comment-detail-card > header {
@@ -781,6 +783,39 @@ h2 {
 
 .editable-text {
   cursor: text;
+}
+
+.locate-hint {
+  display: grid;
+  gap: 10px;
+  margin: 10px 18px 4px 70px;
+  padding: 12px;
+  border: 1px solid rgba(26, 156, 255, 0.22);
+  border-radius: 12px;
+  background: rgba(26, 156, 255, 0.08);
+  color: #17456f;
+  font-size: 12px;
+}
+
+.locate-hint p {
+  margin: 0;
+  font-weight: 800;
+}
+
+.locate-hint strong {
+  display: block;
+  margin-bottom: 4px;
+  color: #0f172a;
+}
+
+.locate-hint ol {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.locate-hint li {
+  overflow-wrap: anywhere;
+  line-height: 1.45;
 }
 
 .reply-list {

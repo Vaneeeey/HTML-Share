@@ -9,7 +9,10 @@ export function injectedBridgeScript() {
   let lockedElement = null;
   let commentsCache = [];
   let pendingLocateComment = null;
+  let pendingLocateOptions = {};
   let rerenderTimer = null;
+  let lastSafeInteractions = [];
+  let replayingInteractions = false;
   const markers = new Map();
 
   const layer = document.createElement("div");
@@ -107,6 +110,11 @@ export function injectedBridgeScript() {
     return Array.from(element.classList || []).filter(Boolean).slice(0, 12);
   }
 
+  function siblingIndex(element) {
+    if (!(element instanceof Element) || !element.parentElement) return 1;
+    return Array.from(element.parentElement.children).filter((child) => child.tagName === element.tagName).indexOf(element) + 1;
+  }
+
   function compactMeta(element) {
     if (!(element instanceof Element)) return {};
     const ancestors = [];
@@ -120,6 +128,21 @@ export function injectedBridgeScript() {
       });
       parent = parent.parentElement;
     }
+    const hierarchy = [];
+    let node = element;
+    while (node && node.nodeType === Node.ELEMENT_NODE && node !== document.documentElement && hierarchy.length < 12) {
+      hierarchy.unshift({
+        tag: node.tagName.toLowerCase(),
+        id: node.id || "",
+        classes: classTokens(node).slice(0, 6),
+        role: attr(node, "role"),
+        ariaLabel: attr(node, "aria-label"),
+        index: siblingIndex(node),
+        text: normalizedText(node).slice(0, 80)
+      });
+      node = node.parentElement;
+    }
+    const stableAncestor = ancestors.find((ancestor) => ancestor.id || ancestor.role || ancestor.classes.length) || null;
     return {
       tag: element.tagName.toLowerCase(),
       id: element.id || "",
@@ -129,6 +152,10 @@ export function injectedBridgeScript() {
       name: attr(element, "name"),
       type: attr(element, "type"),
       href: element instanceof HTMLAnchorElement ? element.href : "",
+      path: cssPath(element),
+      depth: hierarchy.length,
+      stableAncestor,
+      hierarchy,
       ancestors
     };
   }
@@ -213,15 +240,20 @@ export function injectedBridgeScript() {
     return matches ? Math.min(weight, matches * (weight / Math.min(saved.length, 3))) : 0;
   }
 
-  function ancestorScore(savedAncestors, element) {
-    if (!Array.isArray(savedAncestors) || !savedAncestors.length) return 0;
-    let score = 0;
+  function currentAncestorMetas(element) {
     const currentAncestors = [];
     let parent = element.parentElement;
-    while (parent && parent !== document.documentElement && currentAncestors.length < 6) {
+    while (parent && parent !== document.documentElement && currentAncestors.length < 8) {
       currentAncestors.push(compactMeta(parent));
       parent = parent.parentElement;
     }
+    return currentAncestors;
+  }
+
+  function ancestorScore(savedAncestors, element) {
+    if (!Array.isArray(savedAncestors) || !savedAncestors.length) return 0;
+    let score = 0;
+    const currentAncestors = currentAncestorMetas(element);
     savedAncestors.forEach((saved, index) => {
       const current = currentAncestors[index];
       if (!current) return;
@@ -231,6 +263,35 @@ export function injectedBridgeScript() {
       score += overlapScore(saved.classes, current.classes, 6);
     });
     return Math.min(22, score);
+  }
+
+  function hasRequiredAncestor(comment, element) {
+    const meta = comment.targetMeta || {};
+    const required = [];
+    if (meta.stableAncestor?.id || meta.stableAncestor?.role) required.push(meta.stableAncestor);
+    if (Array.isArray(meta.ancestors)) {
+      meta.ancestors.forEach((ancestor) => {
+        if (ancestor?.id || ancestor?.role) required.push(ancestor);
+      });
+    }
+    if (!required.length) return true;
+    const currentAncestors = currentAncestorMetas(element);
+    return required.some((saved) => currentAncestors.some((current) => {
+      if (saved.id && current.id === saved.id) return true;
+      return Boolean(saved.role && current.role === saved.role && (!saved.tag || saved.tag === current.tag));
+    }));
+  }
+
+  function violatesStrongMeta(comment, element) {
+    const meta = comment.targetMeta || {};
+    if (!meta || !Object.keys(meta).length) return false;
+    const current = compactMeta(element);
+    if (meta.id && current.id !== meta.id) return true;
+    if (meta.ariaLabel && current.ariaLabel !== meta.ariaLabel) return true;
+    if (meta.name && current.name !== meta.name) return true;
+    if (meta.href && current.href !== meta.href) return true;
+    if (!hasRequiredAncestor(comment, element)) return true;
+    return false;
   }
 
   function metaScore(comment, element) {
@@ -270,9 +331,122 @@ export function injectedBridgeScript() {
     return Array.from(String(comment.textSnippet || "").replace(/\s+/g, " ").trim()).length >= 4;
   }
 
+  function safeInteractionLabel(step) {
+    const meta = step.targetMeta || {};
+    const bits = [];
+    if (meta.tag) bits.push(meta.tag);
+    if (meta.id) bits.push("#" + meta.id);
+    if (Array.isArray(meta.classes) && meta.classes.length) bits.push("." + meta.classes.slice(0, 2).join("."));
+    const text = String(step.textSnippet || meta.ariaLabel || "").trim();
+    return [bits.join(""), text ? "“" + text.slice(0, 40) + "”" : ""].filter(Boolean).join(" ");
+  }
+
+  function locateHint(comment) {
+    const meta = comment.targetMeta || {};
+    const lines = [];
+    if (Array.isArray(meta.hierarchy) && meta.hierarchy.length) {
+      meta.hierarchy.forEach((item, index) => {
+        const name = [
+          item.tag,
+          item.id ? "#" + item.id : "",
+          Array.isArray(item.classes) && item.classes.length ? "." + item.classes.slice(0, 2).join(".") : "",
+          item.role ? "[role=" + item.role + "]" : "",
+          item.ariaLabel ? "[aria=" + item.ariaLabel + "]" : "",
+          item.index ? ":nth-of-type(" + item.index + ")" : ""
+        ].filter(Boolean).join("");
+        lines.push((index + 1) + ". " + name + (item.text ? " - " + item.text : ""));
+      });
+    } else if (meta.path || comment.selector || comment.xpath) {
+      lines.push(meta.path || comment.selector || comment.xpath);
+    }
+    return {
+      title: "目标元素当前未显示",
+      lines,
+      stableAncestor: meta.stableAncestor || null,
+      interactionPath: Array.isArray(meta.interactionPath) ? meta.interactionPath.map(safeInteractionLabel) : []
+    };
+  }
+
+  function isSafeReplayTrigger(element) {
+    if (!(element instanceof Element) || !isVisibleElement(element)) return false;
+    if (element.matches(":disabled,[disabled],[aria-disabled='true']")) return false;
+    const tag = element.tagName;
+    const role = attr(element, "role");
+    const type = attr(element, "type").toLowerCase();
+    const label = normalizedText(element).toLowerCase();
+    if (/(delete|remove|submit|save|buy|pay|purchase|删除|移除|提交|保存|购买|支付)/i.test(label)) return false;
+    if (element instanceof HTMLAnchorElement && element.href) return false;
+    if (tag === "SUMMARY") return true;
+    if (role === "tab" || role === "button") return true;
+    if (attr(element, "aria-controls")) return true;
+    if (tag === "BUTTON") return !["submit", "reset"].includes(type) && Boolean(type || !element.closest("form"));
+    return false;
+  }
+
+  function interactionStepFor(element) {
+    const trigger = element instanceof Element ? element.closest("button,summary,[role='button'],[role='tab'],[aria-controls]") : null;
+    if (!trigger || !isSafeReplayTrigger(trigger)) return null;
+    return {
+      selector: cssPath(trigger),
+      xpath: xpathFor(trigger),
+      textSnippet: normalizedText(trigger).slice(0, 160),
+      targetMeta: compactMeta(trigger)
+    };
+  }
+
+  function rememberSafeInteraction(element) {
+    const step = interactionStepFor(element);
+    if (!step) return;
+    const fingerprint = JSON.stringify({ selector: step.selector, text: step.textSnippet, meta: step.targetMeta });
+    const last = lastSafeInteractions[lastSafeInteractions.length - 1];
+    if (last?.fingerprint === fingerprint) return;
+    lastSafeInteractions = [...lastSafeInteractions, { ...step, fingerprint }].slice(-5);
+  }
+
+  function replayTargetForStep(step) {
+    return findTarget({
+      selector: step.selector,
+      xpath: step.xpath,
+      textSnippet: step.textSnippet,
+      targetMeta: step.targetMeta || {},
+      rect: {},
+      viewport: {}
+    });
+  }
+
+  function replayInteractionPath(comment, done) {
+    const path = Array.isArray(comment.targetMeta?.interactionPath) ? comment.targetMeta.interactionPath : [];
+    if (!path.length) {
+      done(null);
+      return;
+    }
+    let index = 0;
+    function next() {
+      const target = findTarget(comment);
+      if (target) {
+        done(target);
+        return;
+      }
+      if (index >= path.length) {
+        done(null);
+        return;
+      }
+      const trigger = replayTargetForStep(path[index]);
+      index += 1;
+      if (trigger && isSafeReplayTrigger(trigger)) {
+        replayingInteractions = true;
+        trigger.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
+        replayingInteractions = false;
+      }
+      window.setTimeout(next, 180);
+    }
+    next();
+  }
+
   function candidateScore(comment, candidate) {
     const element = candidate.element;
     if (!isVisibleElement(element)) return -Infinity;
+    if (violatesStrongMeta(comment, element)) return -Infinity;
     let score = 0;
     if (candidate.reasons.has("selector")) score += 55;
     if (candidate.reasons.has("xpath")) score += 50;
@@ -343,7 +517,7 @@ export function injectedBridgeScript() {
       textSnippet: (element.innerText || element.textContent || "").replace(/\s+/g, " ").trim().slice(0, 240),
       rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
       viewport: { width: window.innerWidth, height: window.innerHeight, scrollX: window.scrollX, scrollY: window.scrollY },
-      targetMeta: compactMeta(element),
+      targetMeta: { ...compactMeta(element), interactionPath: lastSafeInteractions.map(({ fingerprint, ...step }) => step) },
     };
   }
 
@@ -408,7 +582,10 @@ export function injectedBridgeScript() {
         window.parent.postMessage({ source: "html-share-bridge", type: "marker-leave", id: comment.id }, "*");
       });
       marker.addEventListener("click", () => {
-        window.parent.postMessage({ source: "html-share-bridge", type: "marker-click", id: comment.id, anchor: markerAnchor(marker) }, "*");
+        lockedElement = target;
+        renderHover();
+        renderLocked();
+        window.parent.postMessage({ source: "html-share-bridge", type: "marker-click", id: comment.id, anchor: markerAnchor(marker), reason: "user-open" }, "*");
       });
       layer.appendChild(marker);
       markers.set(comment.id, marker);
@@ -432,7 +609,9 @@ export function injectedBridgeScript() {
     const target = findTarget(pendingLocateComment);
     if (!target) return;
     const comment = pendingLocateComment;
+    const options = pendingLocateOptions || {};
     pendingLocateComment = null;
+    pendingLocateOptions = {};
     target.scrollIntoView({ block: "center", inline: "center", behavior: "smooth" });
     lockedElement = target;
     window.setTimeout(() => {
@@ -445,7 +624,9 @@ export function injectedBridgeScript() {
           source: "html-share-bridge",
           type: "comment-located",
           id: comment.id,
-          anchor: markerAnchor(marker)
+          anchor: markerAnchor(marker),
+          reason: options.reason || "background-locate",
+          openDetail: Boolean(options.openDetail)
         }, "*");
       }
     }, 260);
@@ -479,6 +660,8 @@ export function injectedBridgeScript() {
   document.addEventListener("click", (event) => {
     const target = event.target;
     if (target instanceof Element && target.closest("[data-html-share-layer]")) return;
+    if (replayingInteractions) return;
+    if (!commentMode) rememberSafeInteraction(target);
     window.parent.postMessage({ source: "html-share-bridge", type: "canvas-click" }, "*");
     if (!commentMode) return;
     if (!isInspectable(target)) return;
@@ -498,14 +681,29 @@ export function injectedBridgeScript() {
       lockedElement = null;
       hoveredElement = null;
       pendingLocateComment = null;
+      pendingLocateOptions = {};
       rerenderOverlay();
     }
     if (message.type === "render-comments") renderComments(message.comments || []);
     if (message.type === "locate") {
       const target = findTarget(message.comment || {});
-      if (target) {
-        target.scrollIntoView({ block: "center", inline: "center", behavior: "smooth" });
-        lockedElement = target;
+      const options = { reason: message.reason || "background-locate", openDetail: Boolean(message.openDetail) };
+      const completeLocate = (locatedTarget) => {
+        if (!locatedTarget) {
+          pendingLocateComment = message.comment || null;
+          pendingLocateOptions = options;
+          window.parent.postMessage({
+            source: "html-share-bridge",
+            type: "comment-missing",
+            id: message.comment?.id,
+            reason: options.reason,
+            openDetail: options.openDetail,
+            hint: locateHint(message.comment || {})
+          }, "*");
+          return;
+        }
+        locatedTarget.scrollIntoView({ block: "center", inline: "center", behavior: "smooth" });
+        lockedElement = locatedTarget;
         window.setTimeout(() => {
           rerenderOverlay();
           const marker = markers.get(message.comment?.id);
@@ -514,18 +712,16 @@ export function injectedBridgeScript() {
               source: "html-share-bridge",
               type: "comment-located",
               id: message.comment.id,
-              anchor: markerAnchor(marker)
+              anchor: markerAnchor(marker),
+              reason: options.reason,
+              openDetail: options.openDetail
             }, "*");
           }
         }, 260);
-      } else {
-        pendingLocateComment = message.comment || null;
-        window.parent.postMessage({
-          source: "html-share-bridge",
-          type: "comment-missing",
-          id: message.comment?.id
-        }, "*");
-      }
+      };
+      if (target) completeLocate(target);
+      else if (message.replay !== false) replayInteractionPath(message.comment || {}, completeLocate);
+      else completeLocate(null);
     }
   });
 

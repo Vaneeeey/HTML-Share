@@ -27,6 +27,20 @@ describe("comment validation", () => {
         classes: ["primary", "large", "x".repeat(100)],
         role: "button",
         ariaLabel: "Submit",
+        path: "main > div#dialog > button#modal-submit",
+        hierarchy: [
+          { tag: "main", id: "root", index: 1, text: "Modal content Submit" },
+          { tag: "div", id: "dialog", role: "dialog", index: 1, text: "Modal content Submit" },
+          { tag: "button", id: "modal-submit", classes: ["primary"], index: 1, text: "Submit" },
+        ],
+        interactionPath: [
+          {
+            selector: "button#open-modal",
+            xpath: "/html[1]/body[1]/button[1]",
+            textSnippet: "Open modal",
+            targetMeta: { tag: "button", id: "open-modal" },
+          },
+        ],
         ancestors: [
           { tag: "div", id: "dialog", classes: ["modal"], role: "dialog" },
           { tag: "section", classes: ["screen"] },
@@ -41,7 +55,10 @@ describe("comment validation", () => {
       classes: ["primary", "large", "x".repeat(80)],
       role: "button",
       ariaLabel: "Submit",
+      path: "main > div#dialog > button#modal-submit",
     });
+    expect(targetMeta.hierarchy).toHaveLength(3);
+    expect(targetMeta.interactionPath[0]).toMatchObject({ selector: "button#open-modal", textSnippet: "Open modal" });
     expect(targetMeta.ancestors[0]).toMatchObject({ tag: "div", id: "dialog", classes: ["modal"], role: "dialog" });
   });
 
