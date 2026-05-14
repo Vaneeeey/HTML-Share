@@ -21,3 +21,12 @@ export function assertCommentInput(input: Record<string, unknown>) {
     viewport: JSON.stringify(input.viewport ?? {}),
   };
 }
+
+export function assertBodyInput(input: Record<string, unknown>) {
+  const body = String(input.body ?? "").trim();
+
+  if (!body) throw new Error("Comment is required.");
+  if (body.length > 2000) throw new Error("Comment is too long.");
+
+  return { body };
+}

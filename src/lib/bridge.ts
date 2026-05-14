@@ -23,17 +23,17 @@ export function injectedBridgeScript() {
   hoverBox.className = "html-share-selection html-share-selection-hover";
   const lockedBox = document.createElement("div");
   lockedBox.className = "html-share-selection html-share-selection-locked";
-  const hoverLabel = document.createElement("div");
-  hoverLabel.className = "html-share-label";
 
+  const cursorSvg = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Cpath d='M8 5h11a8 8 0 0 1 8 8v1a8 8 0 0 1-8 8h-6l-7 5v-7a8 8 0 0 1 2-15Z' fill='%231a9cff' stroke='white' stroke-width='2'/%3E%3C/svg%3E\") 8 8, crosshair";
   const style = document.createElement("style");
   style.textContent = [
-    ".html-share-selection { position: absolute; display: none; box-sizing: border-box; border: 2px solid #1a73ff; background: rgba(26, 115, 255, .12); box-shadow: 0 0 0 1px rgba(255,255,255,.95), 0 8px 24px rgba(26,115,255,.18); border-radius: 3px; pointer-events: none; }",
-    ".html-share-selection-hover { border-style: solid; }",
-    ".html-share-selection-locked { display: block; background: rgba(26, 115, 255, .18); box-shadow: 0 0 0 1px rgba(255,255,255,.95), 0 0 0 4px rgba(26,115,255,.22), 0 14px 34px rgba(26,115,255,.24); }",
-    ".html-share-label { position: absolute; display: none; height: 22px; padding: 0 8px; border-radius: 6px; align-items: center; background: #1a73ff; color: white; font: 700 12px ui-sans-serif, system-ui; box-shadow: 0 8px 22px rgba(26,115,255,.32); pointer-events: none; white-space: nowrap; }",
-    ".html-share-marker { position: absolute; width: 22px; height: 22px; border-radius: 999px; display: grid; place-items: center; font: 800 12px ui-sans-serif, system-ui; color: white; background: #1a73ff; border: 2px solid white; box-shadow: 0 8px 20px rgba(0,0,0,.24); pointer-events: auto; cursor: pointer; }",
-    ".html-share-marker.resolved { background: #94a3b8; color: #0f172a; border-color: white; }"
+    ".html-share-comment-mode, .html-share-comment-mode * { cursor: " + cursorSvg + " !important; }",
+    ".html-share-selection { position: absolute; display: none; box-sizing: border-box; border: 2px solid #1a9cff; background: rgba(26,156,255,.12); box-shadow: 0 0 0 1px rgba(255,255,255,.95), 0 8px 24px rgba(26,156,255,.18); border-radius: 4px; pointer-events: none; transition: left 80ms ease, top 80ms ease, width 80ms ease, height 80ms ease; }",
+    ".html-share-selection-locked { background: rgba(26,156,255,.18); box-shadow: 0 0 0 1px rgba(255,255,255,.95), 0 0 0 4px rgba(26,156,255,.22), 0 14px 34px rgba(26,156,255,.24); }",
+    ".html-share-marker { position: absolute; width: 38px; height: 38px; border: 0; background: transparent; pointer-events: auto; cursor: pointer !important; padding: 0; filter: drop-shadow(0 10px 18px rgba(15, 23, 42, .22)); }",
+    ".html-share-marker-shell { position: absolute; inset: 0; border-radius: 999px 999px 999px 7px; background: white; border: 2px solid #1a9cff; display: grid; place-items: center; transform: rotate(-45deg); }",
+    ".html-share-marker-avatar { width: 24px; height: 24px; border-radius: 999px; display: grid; place-items: center; color: white; background: #1a9cff; font: 800 12px ui-sans-serif, system-ui; transform: rotate(45deg); }",
+    ".html-share-marker.resolved { opacity: .58; filter: grayscale(1) drop-shadow(0 8px 14px rgba(15, 23, 42, .18)); }"
   ].join("\n");
 
   function ensureLayer() {
@@ -42,7 +42,6 @@ export function injectedBridgeScript() {
       document.body.appendChild(layer);
       layer.appendChild(hoverBox);
       layer.appendChild(lockedBox);
-      layer.appendChild(hoverLabel);
     }
   }
 
@@ -104,15 +103,6 @@ export function injectedBridgeScript() {
     return findByXPath(comment.xpath);
   }
 
-  function elementLabel(element) {
-    const name = element.nodeName.toLowerCase();
-    const id = element.id ? "#" + element.id : "";
-    const className = typeof element.className === "string" && element.className.trim()
-      ? "." + element.className.trim().split(/\s+/).slice(0, 2).join(".")
-      : "";
-    return (name + id + className).slice(0, 64);
-  }
-
   function isInspectable(element) {
     if (!(element instanceof Element)) return false;
     if (element.closest("[data-html-share-layer]")) return false;
@@ -150,18 +140,9 @@ export function injectedBridgeScript() {
     ensureLayer();
     if (!commentMode || lockedElement) {
       hoverBox.style.display = "none";
-      hoverLabel.style.display = "none";
       return;
     }
-    const rect = positionBox(hoverBox, hoveredElement);
-    if (!rect || !hoveredElement) {
-      hoverLabel.style.display = "none";
-      return;
-    }
-    hoverLabel.style.display = "inline-flex";
-    hoverLabel.textContent = elementLabel(hoveredElement);
-    hoverLabel.style.left = Math.max(0, rect.left + window.scrollX) + "px";
-    hoverLabel.style.top = Math.max(0, rect.top + window.scrollY - 26) + "px";
+    positionBox(hoverBox, hoveredElement);
   }
 
   function renderLocked() {
@@ -169,10 +150,13 @@ export function injectedBridgeScript() {
     positionBox(lockedBox, lockedElement);
   }
 
-  function setLocked(element) {
-    lockedElement = element;
-    renderHover();
-    renderLocked();
+  function firstChar(value) {
+    return Array.from(String(value || "?").trim())[0] || "?";
+  }
+
+  function markerAnchor(marker) {
+    const rect = marker.getBoundingClientRect();
+    return { x: rect.left, y: rect.top, width: rect.width, height: rect.height };
   }
 
   function renderComments(comments) {
@@ -180,19 +164,26 @@ export function injectedBridgeScript() {
     commentsCache = comments || [];
     markers.forEach((marker) => marker.remove());
     markers.clear();
-    commentsCache.forEach((comment, index) => {
+    commentsCache.forEach((comment) => {
       const target = findTarget(comment);
       if (!target) return;
       const rect = target.getBoundingClientRect();
       const marker = document.createElement("button");
       marker.type = "button";
       marker.className = "html-share-marker " + (comment.status === "resolved" ? "resolved" : "");
-      marker.textContent = String(index + 1);
       marker.title = comment.body || "Comment";
-      marker.style.left = Math.max(0, rect.left + window.scrollX - 11) + "px";
-      marker.style.top = Math.max(0, rect.top + window.scrollY - 11) + "px";
+      marker.innerHTML = "<span class='html-share-marker-shell'><span class='html-share-marker-avatar'></span></span>";
+      marker.querySelector(".html-share-marker-avatar").textContent = firstChar(comment.authorName);
+      marker.style.left = Math.max(0, rect.left + window.scrollX - 19) + "px";
+      marker.style.top = Math.max(0, rect.top + window.scrollY - 19) + "px";
+      marker.addEventListener("pointerenter", () => {
+        window.parent.postMessage({ source: "html-share-bridge", type: "marker-hover", id: comment.id, anchor: markerAnchor(marker) }, "*");
+      });
+      marker.addEventListener("pointerleave", () => {
+        window.parent.postMessage({ source: "html-share-bridge", type: "marker-leave", id: comment.id }, "*");
+      });
       marker.addEventListener("click", () => {
-        window.parent.postMessage({ source: "html-share-bridge", type: "pin-click", id: comment.id }, "*");
+        window.parent.postMessage({ source: "html-share-bridge", type: "marker-click", id: comment.id, anchor: markerAnchor(marker) }, "*");
       });
       layer.appendChild(marker);
       markers.set(comment.id, marker);
@@ -203,6 +194,16 @@ export function injectedBridgeScript() {
     renderHover();
     renderLocked();
     renderComments(commentsCache);
+  }
+
+  function setMode(enabled) {
+    commentMode = Boolean(enabled);
+    document.documentElement.classList.toggle("html-share-comment-mode", commentMode);
+    if (!commentMode) {
+      hoveredElement = null;
+      lockedElement = null;
+    }
+    rerenderOverlay();
   }
 
   document.addEventListener("pointerover", (event) => {
@@ -226,21 +227,16 @@ export function injectedBridgeScript() {
     if (!isInspectable(target)) return;
     event.preventDefault();
     event.stopPropagation();
-    setLocked(target);
+    lockedElement = target;
+    renderHover();
+    renderLocked();
     window.parent.postMessage({ source: "html-share-bridge", type: "element-click", payload: payloadFor(target) }, "*");
   }, true);
 
   window.addEventListener("message", (event) => {
     const message = event.data || {};
     if (message.source !== "html-share-parent") return;
-    if (message.type === "set-mode") {
-      commentMode = Boolean(message.enabled);
-      if (!commentMode) {
-        hoveredElement = null;
-        lockedElement = null;
-      }
-      rerenderOverlay();
-    }
+    if (message.type === "set-mode") setMode(message.enabled);
     if (message.type === "clear-selection") {
       lockedElement = null;
       rerenderOverlay();
@@ -250,7 +246,7 @@ export function injectedBridgeScript() {
       const target = findTarget(message.comment || {});
       if (target) {
         target.scrollIntoView({ block: "center", inline: "center", behavior: "smooth" });
-        setLocked(target);
+        lockedElement = target;
         window.setTimeout(rerenderOverlay, 260);
       }
     }

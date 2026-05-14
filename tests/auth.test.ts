@@ -45,7 +45,7 @@ describe("identity tokens", () => {
     withAuthEnv("admin-password", () => {
       const token = createIdentityToken("  Lin  ");
 
-      expect(verifyIdentityToken(token)).toEqual({ name: "Lin" });
+      expect(verifyIdentityToken(token)).toMatchObject({ identityId: expect.any(String), name: "Lin" });
     });
   });
 

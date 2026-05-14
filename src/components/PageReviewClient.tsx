@@ -1,202 +1,22 @@
 "use client";
 
-import Link from "next/link";
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, CheckCircle2, ExternalLink, KeyRound, LocateFixed, Trash2, Undo2 } from "lucide-react";
+import { ReviewWorkspace } from "@/components/ReviewWorkspace";
 import type { SerializedComment, SerializedPage } from "@/lib/serializers";
 
 type Props = {
+  identityName: string;
   page: SerializedPage;
   initialComments: SerializedComment[];
 };
 
-export function PageReviewClient({ page, initialComments }: Props) {
-  const iframeRef = useRef<HTMLIFrameElement>(null);
-  const [comments, setComments] = useState(initialComments);
-  const [hasAccessPassword, setHasAccessPassword] = useState(page.hasAccessPassword);
-  const [accessPassword, setAccessPassword] = useState("");
-  const [passwordNotice, setPasswordNotice] = useState("");
-  const [passwordError, setPasswordError] = useState("");
-  const [savingPassword, setSavingPassword] = useState(false);
-  const iframeSrc = `/uploads/${page.id}/${page.entryPath}`;
-  const openCount = useMemo(
-    () => comments.filter((comment) => comment.status !== "resolved").length,
-    [comments],
-  );
-
-  const postToFrame = useCallback((message: Record<string, unknown>) => {
-    iframeRef.current?.contentWindow?.postMessage({ source: "html-share-parent", ...message }, "*");
-  }, []);
-
-  const syncFrame = useCallback(
-    (nextComments = comments) => {
-      postToFrame({ type: "set-mode", enabled: false });
-      postToFrame({ type: "render-comments", comments: nextComments });
-    },
-    [comments, postToFrame],
-  );
-
-  useEffect(() => {
-    function onMessage(event: MessageEvent) {
-      const message = event.data || {};
-      if (message.source !== "html-share-bridge") return;
-      if (message.type === "ready" || message.type === "request-comments") syncFrame();
-      if (message.type === "pin-click") {
-        const comment = comments.find((item) => item.id === message.id);
-        if (comment) postToFrame({ type: "locate", comment });
-      }
-    }
-
-    window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
-  }, [comments, postToFrame, syncFrame]);
-
-  useEffect(() => syncFrame(), [comments, syncFrame]);
-
-  async function setStatus(comment: SerializedComment, status: "open" | "resolved") {
-    const response = await fetch(`/api/comments/${comment.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
-    });
-    const data = (await response.json().catch(() => ({}))) as { comment?: SerializedComment };
-    if (response.ok && data.comment) {
-      setComments((current) => current.map((item) => (item.id === comment.id ? data.comment! : item)));
-    }
-  }
-
-  async function removeComment(comment: SerializedComment) {
-    const confirmed = window.confirm("删除这条评论？");
-    if (!confirmed) return;
-
-    const response = await fetch(`/api/comments/${comment.id}`, { method: "DELETE" });
-    if (response.ok) {
-      setComments((current) => current.filter((item) => item.id !== comment.id));
-    }
-  }
-
-  async function updateAccessPassword(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setSavingPassword(true);
-    setPasswordError("");
-    setPasswordNotice("");
-
-    const response = await fetch(`/api/pages/${page.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ accessPassword }),
-    });
-    const data = (await response.json().catch(() => ({}))) as {
-      error?: string;
-      page?: SerializedPage;
-    };
-
-    setSavingPassword(false);
-
-    if (!response.ok || !data.page) {
-      setPasswordError(data.error ?? "访问密码更新失败");
-      return;
-    }
-
-    setAccessPassword("");
-    setHasAccessPassword(data.page.hasAccessPassword);
-    setPasswordNotice("访问密码已更新。旧的评论端访问授权已失效。");
-  }
-
+export function PageReviewClient({ identityName, page, initialComments }: Props) {
   return (
-    <div className="review-shell admin-review">
-      <aside className="review-sidebar">
-        <Link className="secondary-button fit" href="/dashboard">
-          <ArrowLeft size={16} />
-          返回工作台
-        </Link>
-        <div>
-          <p className="eyebrow">Review Queue</p>
-          <h1>{page.title}</h1>
-          <p className="muted">{openCount} 条待处理 · {comments.length} 条全部评论</p>
-        </div>
-        <Link className="primary-button" href={`/s/${page.slug}`} target="_blank">
-          <ExternalLink size={16} />
-          打开分享页
-        </Link>
-
-        <form className="access-card" onSubmit={updateAccessPassword}>
-          <div>
-            <p className="eyebrow">Access Password</p>
-            <h2>{hasAccessPassword ? "重置访问密码" : "设置访问密码"}</h2>
-            <p className="muted">
-              {hasAccessPassword ? "重置后，旧访问授权会立即失效。" : "旧页面需要设置密码后才能被评论者访问。"}
-            </p>
-          </div>
-          <label className="field">
-            <span>新访问密码</span>
-            <input
-              minLength={4}
-              onChange={(event) => setAccessPassword(event.target.value)}
-              placeholder="至少 4 位"
-              required
-              type="password"
-              value={accessPassword}
-            />
-          </label>
-          {passwordError ? <p className="error-text">{passwordError}</p> : null}
-          {passwordNotice ? <p className="success-text">{passwordNotice}</p> : null}
-          <button className="secondary-button" disabled={savingPassword} type="submit">
-            <KeyRound size={16} />
-            {savingPassword ? "保存中" : "保存访问密码"}
-          </button>
-        </form>
-
-        <div className="comment-list">
-          {comments.length === 0 ? (
-            <div className="empty-state compact-empty">暂无评论</div>
-          ) : (
-            comments.map((comment, index) => (
-              <article className="comment-card" key={comment.id}>
-                <button
-                  className="comment-jump"
-                  onClick={() => postToFrame({ type: "locate", comment })}
-                  type="button"
-                >
-                  <span className={comment.status === "resolved" ? "pin muted-pin" : "pin"}>{index + 1}</span>
-                  <span>
-                    <strong>{comment.authorName}</strong>
-                    <small>{new Date(comment.createdAt).toLocaleString()}</small>
-                  </span>
-                  <LocateFixed size={16} />
-                </button>
-                <p>{comment.body}</p>
-                {comment.textSnippet ? <em>{comment.textSnippet}</em> : null}
-                <div className="comment-actions">
-                  {comment.status === "resolved" ? (
-                    <button className="secondary-button" onClick={() => setStatus(comment, "open")} type="button">
-                      <Undo2 size={15} />
-                      重开
-                    </button>
-                  ) : (
-                    <button className="secondary-button" onClick={() => setStatus(comment, "resolved")} type="button">
-                      <CheckCircle2 size={15} />
-                      已处理
-                    </button>
-                  )}
-                  <button className="icon-button danger" onClick={() => removeComment(comment)} type="button">
-                    <Trash2 size={16} />
-                  </button>
-                </div>
-              </article>
-            ))
-          )}
-        </div>
-      </aside>
-
-      <main className="frame-stage">
-        <iframe
-          ref={iframeRef}
-          sandbox="allow-scripts allow-forms allow-popups"
-          src={iframeSrc}
-          title={page.title}
-        />
-      </main>
-    </div>
+    <ReviewWorkspace
+      identityName={identityName}
+      initialComments={initialComments}
+      initialMode="interact"
+      isAdmin
+      page={page}
+    />
   );
 }

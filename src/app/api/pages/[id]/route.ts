@@ -15,7 +15,10 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
   const page = await prisma.page.findUnique({
     where: { id },
     include: {
-      comments: { orderBy: { createdAt: "asc" } },
+      comments: {
+        include: { replies: { orderBy: { createdAt: "asc" } } },
+        orderBy: { createdAt: "asc" },
+      },
       _count: { select: { comments: true } },
     },
   });
@@ -24,7 +27,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
 
   return NextResponse.json({
     page: serializePage(page),
-    comments: page.comments.map(serializeComment),
+    comments: page.comments.map((comment) => serializeComment(comment, { isAdmin: true })),
   });
 }
 
@@ -54,14 +57,17 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       where: { id },
       data: { accessPasswordHash: hashAccessPassword(input.accessPassword) },
       include: {
-        comments: { orderBy: { createdAt: "asc" } },
+        comments: {
+          include: { replies: { orderBy: { createdAt: "asc" } } },
+          orderBy: { createdAt: "asc" },
+        },
         _count: { select: { comments: true } },
       },
     });
 
     return NextResponse.json({
       page: serializePage(page),
-      comments: page.comments.map(serializeComment),
+      comments: page.comments.map((comment) => serializeComment(comment, { isAdmin: true })),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Access password update failed.";

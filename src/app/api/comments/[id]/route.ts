@@ -15,8 +15,9 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     const comment = await prisma.comment.update({
       where: { id },
       data: { status: normalizeStatus(input.status) },
+      include: { replies: { orderBy: { createdAt: "asc" } } },
     });
-    return NextResponse.json({ comment: serializeComment(comment) });
+    return NextResponse.json({ comment: serializeComment(comment, { isAdmin: true }) });
   } catch {
     return NextResponse.json({ error: "Comment not found." }, { status: 404 });
   }

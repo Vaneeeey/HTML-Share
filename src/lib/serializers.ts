@@ -1,7 +1,17 @@
-import type { Comment, Page } from "@prisma/client";
+import type { Comment, CommentReply, Page } from "@prisma/client";
 
 export type SerializedComment = ReturnType<typeof serializeComment>;
 export type SerializedPage = ReturnType<typeof serializePage>;
+export type SerializedReply = ReturnType<typeof serializeReply>;
+
+type Viewer = {
+  identityId?: string | null;
+  isAdmin?: boolean;
+};
+
+type CommentWithReplies = Comment & {
+  replies?: CommentReply[];
+};
 
 export function serializePage(page: Page & { _count?: { comments: number } }) {
   return {
@@ -18,7 +28,22 @@ export function serializePage(page: Page & { _count?: { comments: number } }) {
   };
 }
 
-export function serializeComment(comment: Comment) {
+export function serializeReply(reply: CommentReply, viewer: Viewer = {}) {
+  const isOwner = Boolean(viewer.identityId && reply.authorIdentityId === viewer.identityId);
+  return {
+    id: reply.id,
+    commentId: reply.commentId,
+    authorName: reply.authorName,
+    body: reply.body,
+    canDelete: isOwner || Boolean(viewer.isAdmin),
+    canEdit: isOwner,
+    createdAt: reply.createdAt.toISOString(),
+    updatedAt: reply.updatedAt.toISOString(),
+  };
+}
+
+export function serializeComment(comment: CommentWithReplies, viewer: Viewer = {}) {
+  const isOwner = Boolean(viewer.identityId && comment.authorIdentityId === viewer.identityId);
   return {
     id: comment.id,
     pageId: comment.pageId,
@@ -30,6 +55,10 @@ export function serializeComment(comment: Comment) {
     rect: parseJsonField(comment.rect),
     viewport: parseJsonField(comment.viewport),
     status: comment.status,
+    canDelete: isOwner || Boolean(viewer.isAdmin),
+    canEdit: isOwner,
+    canResolve: Boolean(viewer.isAdmin),
+    replies: (comment.replies ?? []).map((reply) => serializeReply(reply, viewer)),
     createdAt: comment.createdAt.toISOString(),
     updatedAt: comment.updatedAt.toISOString(),
   };

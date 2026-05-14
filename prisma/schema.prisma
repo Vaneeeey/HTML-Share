@@ -30,6 +30,7 @@ model Comment {
   pageId      String
   page        Page     @relation(fields: [pageId], references: [id], onDelete: Cascade)
   authorName  String
+  authorIdentityId String?
   body        String
   selector    String
   xpath       String
@@ -37,8 +38,24 @@ model Comment {
   rect        String
   viewport    String
   status      String   @default("open")
+  replies     CommentReply[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   @@index([pageId, createdAt])
+  @@index([authorIdentityId])
+}
+
+model CommentReply {
+  id          String   @id
+  commentId   String
+  comment     Comment  @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  authorName  String
+  authorIdentityId String
+  body        String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([commentId, createdAt])
+  @@index([authorIdentityId])
 }

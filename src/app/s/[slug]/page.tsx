@@ -15,7 +15,10 @@ export default async function SharePage(props: { params: Promise<{ slug: string 
   const page = await prisma.page.findUnique({
     where: { slug },
     include: {
-      comments: { orderBy: { createdAt: "asc" } },
+      comments: {
+        include: { replies: { orderBy: { createdAt: "asc" } } },
+        orderBy: { createdAt: "asc" },
+      },
       _count: { select: { comments: true } },
     },
   });
@@ -26,11 +29,15 @@ export default async function SharePage(props: { params: Promise<{ slug: string 
   const accessGranted =
     Boolean(identity) &&
     verifyShareAccessToken(page, cookieStore.get(shareAccessCookieName(page.id))?.value);
-  const initialComments = accessGranted ? page.comments.map(serializeComment) : [];
+  const viewer = { identityId: identity?.identityId ?? null };
+  const initialComments = accessGranted
+    ? page.comments.map((comment) => serializeComment(comment, viewer))
+    : [];
 
   return (
     <ShareClient
       accessGranted={accessGranted}
+      identityId={identity?.identityId ?? null}
       identityName={identity?.name ?? null}
       initialComments={initialComments}
       page={serializePage(page)}

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   createIdentityToken,
+  getIdentityFromRequest,
   identityCookieName,
   identityCookieOptions,
   normalizeIdentityName,
@@ -12,8 +13,13 @@ export async function POST(request: NextRequest) {
   try {
     const input = (await request.json().catch(() => ({}))) as { name?: unknown };
     const name = normalizeIdentityName(input.name);
+    const existingIdentity = getIdentityFromRequest(request);
     const response = NextResponse.json({ ok: true, name });
-    response.cookies.set(identityCookieName, createIdentityToken(name), identityCookieOptions());
+    response.cookies.set(
+      identityCookieName,
+      createIdentityToken(name, existingIdentity?.identityId),
+      identityCookieOptions(),
+    );
     return response;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Invalid name.";

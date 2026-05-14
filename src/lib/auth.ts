@@ -76,9 +76,18 @@ export function normalizeIdentityName(value: unknown) {
   return name;
 }
 
-export function createIdentityToken(name: string) {
+function newIdentityId() {
+  return crypto.randomBytes(16).toString("base64url");
+}
+
+function legacyIdentityId(payload: string) {
+  return `legacy_${crypto.createHash("sha256").update(payload).digest("base64url").slice(0, 24)}`;
+}
+
+export function createIdentityToken(name: string, identityId = newIdentityId()) {
   const payload = Buffer.from(
     JSON.stringify({
+      identityId,
       name: normalizeIdentityName(name),
       expiresAt: Date.now() + identityMaxAgeSeconds * 1000,
     }),
@@ -99,11 +108,16 @@ export function verifyIdentityToken(token?: string) {
 
   try {
     const data = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as {
+      identityId?: unknown;
       name?: unknown;
       expiresAt?: unknown;
     };
     if (typeof data.expiresAt !== "number" || data.expiresAt <= Date.now()) return null;
-    return { name: normalizeIdentityName(data.name) };
+    const identityId =
+      typeof data.identityId === "string" && data.identityId.trim()
+        ? data.identityId.trim()
+        : legacyIdentityId(payload);
+    return { identityId, name: normalizeIdentityName(data.name) };
   } catch {
     return null;
   }
