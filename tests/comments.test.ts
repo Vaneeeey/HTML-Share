@@ -17,6 +17,34 @@ describe("comment validation", () => {
     );
   });
 
+  it("stores a bounded target fingerprint for dynamic element lookup", () => {
+    const input = assertCommentInput({
+      body: "Fix",
+      selector: "button",
+      targetMeta: {
+        tag: "button",
+        id: "modal-submit",
+        classes: ["primary", "large", "x".repeat(100)],
+        role: "button",
+        ariaLabel: "Submit",
+        ancestors: [
+          { tag: "div", id: "dialog", classes: ["modal"], role: "dialog" },
+          { tag: "section", classes: ["screen"] },
+        ],
+      },
+    });
+
+    const targetMeta = JSON.parse(input.targetMeta);
+    expect(targetMeta).toMatchObject({
+      tag: "button",
+      id: "modal-submit",
+      classes: ["primary", "large", "x".repeat(80)],
+      role: "button",
+      ariaLabel: "Submit",
+    });
+    expect(targetMeta.ancestors[0]).toMatchObject({ tag: "div", id: "dialog", classes: ["modal"], role: "dialog" });
+  });
+
   it("normalizes status values", () => {
     expect(normalizeStatus("resolved")).toBe("resolved");
     expect(normalizeStatus("other")).toBe("open");

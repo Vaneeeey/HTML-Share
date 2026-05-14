@@ -37,6 +37,7 @@ model Comment {
   textSnippet String
   rect        String
   viewport    String
+  targetMeta  String   @default("{}")
   status      String   @default("open")
   replies     CommentReply[]
   createdAt   DateTime @default(now())

@@ -8,6 +8,8 @@ export function injectedBridgeScript() {
   let hoveredElement = null;
   let lockedElement = null;
   let commentsCache = [];
+  let pendingLocateComment = null;
+  let rerenderTimer = null;
   const markers = new Map();
 
   const layer = document.createElement("div");
@@ -93,14 +95,236 @@ export function injectedBridgeScript() {
     }
   }
 
+  function normalizedText(element) {
+    return (element.innerText || element.textContent || "").replace(/\s+/g, " ").trim();
+  }
+
+  function attr(element, name) {
+    return String(element.getAttribute(name) || "").trim();
+  }
+
+  function classTokens(element) {
+    return Array.from(element.classList || []).filter(Boolean).slice(0, 12);
+  }
+
+  function compactMeta(element) {
+    if (!(element instanceof Element)) return {};
+    const ancestors = [];
+    let parent = element.parentElement;
+    while (parent && parent !== document.documentElement && ancestors.length < 5) {
+      ancestors.push({
+        tag: parent.tagName.toLowerCase(),
+        id: parent.id || "",
+        classes: classTokens(parent).slice(0, 8),
+        role: attr(parent, "role")
+      });
+      parent = parent.parentElement;
+    }
+    return {
+      tag: element.tagName.toLowerCase(),
+      id: element.id || "",
+      classes: classTokens(element),
+      role: attr(element, "role"),
+      ariaLabel: attr(element, "aria-label"),
+      name: attr(element, "name"),
+      type: attr(element, "type"),
+      href: element instanceof HTMLAnchorElement ? element.href : "",
+      ancestors
+    };
+  }
+
+  function isVisibleElement(element) {
+    if (!(element instanceof Element) || !element.isConnected) return false;
+    if (element.closest("[data-html-share-layer]")) return false;
+    const rect = element.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return false;
+    const style = window.getComputedStyle(element);
+    return style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity || "1") > 0;
+  }
+
+  function textMatches(comment, element) {
+    const snippet = String(comment.textSnippet || "").replace(/\s+/g, " ").trim();
+    if (!snippet) return true;
+    const text = normalizedText(element);
+    if (!text) return false;
+    return text.includes(snippet) || snippet.includes(text.slice(0, 120));
+  }
+
+  function lastSelectorTag(selector) {
+    const lastPart = String(selector || "").split(">").pop()?.trim() || "";
+    return lastPart.match(/^[a-zA-Z0-9-]+/)?.[0]?.toUpperCase() || "";
+  }
+
+  function expectedRect(comment) {
+    const rect = comment.rect || {};
+    const viewport = comment.viewport || {};
+    const scaleX = viewport.width ? window.innerWidth / Number(viewport.width) : 1;
+    const scaleY = viewport.height ? window.innerHeight / Number(viewport.height) : 1;
+    return {
+      x: Number(rect.x || 0) * scaleX,
+      y: Number(rect.y || 0) * scaleY,
+      width: Number(rect.width || 0) * scaleX,
+      height: Number(rect.height || 0) * scaleY,
+    };
+  }
+
+  function rectScore(comment, element) {
+    const expected = expectedRect(comment);
+    if (!expected.width && !expected.height) return 0;
+    const rect = element.getBoundingClientRect();
+    const distance = Math.abs(rect.left - expected.x) + Math.abs(rect.top - expected.y);
+    const sizeDistance = Math.abs(rect.width - expected.width) + Math.abs(rect.height - expected.height);
+    return Math.max(0, 30 - Math.min(30, (distance + sizeDistance * 0.35) / 18));
+  }
+
+  function addCandidate(candidates, element, reason) {
+    if (element instanceof Element && !candidates.some((candidate) => candidate.element === element)) {
+      candidates.push({ element, reasons: new Set([reason]) });
+      return;
+    }
+    const candidate = candidates.find((item) => item.element === element);
+    if (candidate) candidate.reasons.add(reason);
+  }
+
+  function addCandidatesBySelector(candidates, selector, reason) {
+    if (!selector) return;
+    try {
+      document.querySelectorAll(selector).forEach((element) => addCandidate(candidates, element, reason));
+    } catch {}
+  }
+
+  function addMetaCandidates(candidates, comment) {
+    const meta = comment.targetMeta || {};
+    if (meta.id) addCandidatesBySelector(candidates, "#" + CSS.escape(String(meta.id)), "meta");
+    if (meta.role) addCandidatesBySelector(candidates, "[role='" + CSS.escape(String(meta.role)) + "']", "meta");
+    if (meta.ariaLabel) addCandidatesBySelector(candidates, "[aria-label='" + CSS.escape(String(meta.ariaLabel)) + "']", "meta");
+    if (meta.name) addCandidatesBySelector(candidates, "[name='" + CSS.escape(String(meta.name)) + "']", "meta");
+    if (Array.isArray(meta.classes) && meta.classes.length) {
+      const tag = /^[a-z0-9-]+$/i.test(String(meta.tag || "")) ? String(meta.tag) : "*";
+      const selector = tag + meta.classes.slice(0, 3).map((item) => "." + CSS.escape(String(item))).join("");
+      addCandidatesBySelector(candidates, selector, "meta");
+    }
+  }
+
+  function overlapScore(saved, current, weight) {
+    if (!Array.isArray(saved) || !saved.length || !Array.isArray(current) || !current.length) return 0;
+    const currentSet = new Set(current);
+    const matches = saved.filter((item) => currentSet.has(item)).length;
+    return matches ? Math.min(weight, matches * (weight / Math.min(saved.length, 3))) : 0;
+  }
+
+  function ancestorScore(savedAncestors, element) {
+    if (!Array.isArray(savedAncestors) || !savedAncestors.length) return 0;
+    let score = 0;
+    const currentAncestors = [];
+    let parent = element.parentElement;
+    while (parent && parent !== document.documentElement && currentAncestors.length < 6) {
+      currentAncestors.push(compactMeta(parent));
+      parent = parent.parentElement;
+    }
+    savedAncestors.forEach((saved, index) => {
+      const current = currentAncestors[index];
+      if (!current) return;
+      if (saved.id && current.id === saved.id) score += 12;
+      if (saved.tag && current.tag === saved.tag) score += 3;
+      if (saved.role && current.role === saved.role) score += 4;
+      score += overlapScore(saved.classes, current.classes, 6);
+    });
+    return Math.min(22, score);
+  }
+
+  function metaScore(comment, element) {
+    const meta = comment.targetMeta || {};
+    if (!meta || !Object.keys(meta).length) return 0;
+    const current = compactMeta(element);
+    let score = 0;
+    if (meta.tag) score += current.tag === meta.tag ? 12 : -32;
+    if (meta.id) score += current.id === meta.id ? 42 : -80;
+    if (meta.role) score += current.role === meta.role ? 12 : -4;
+    if (meta.ariaLabel) score += current.ariaLabel === meta.ariaLabel ? 16 : -5;
+    if (meta.name) score += current.name === meta.name ? 12 : -4;
+    if (meta.type) score += current.type === meta.type ? 8 : -3;
+    if (meta.href) score += current.href === meta.href ? 10 : 0;
+    score += overlapScore(meta.classes, current.classes, 18);
+    score += ancestorScore(meta.ancestors, element);
+    return score;
+  }
+
+  function hasStrongMeta(comment) {
+    const meta = comment.targetMeta || {};
+    return Boolean(
+      meta.id ||
+      meta.ariaLabel ||
+      meta.name ||
+      meta.href ||
+      (Array.isArray(meta.classes) && meta.classes.length) ||
+      (Array.isArray(meta.ancestors) && meta.ancestors.some((ancestor) => ancestor?.id || ancestor?.role))
+    );
+  }
+
+  function hasStrongReason(candidate) {
+    return candidate.reasons.has("selector") || candidate.reasons.has("xpath") || candidate.reasons.has("meta");
+  }
+
+  function hasDistinctSnippet(comment) {
+    return Array.from(String(comment.textSnippet || "").replace(/\s+/g, " ").trim()).length >= 4;
+  }
+
+  function candidateScore(comment, candidate) {
+    const element = candidate.element;
+    if (!isVisibleElement(element)) return -Infinity;
+    let score = 0;
+    if (candidate.reasons.has("selector")) score += 55;
+    if (candidate.reasons.has("xpath")) score += 50;
+    if (candidate.reasons.has("meta")) score += 42;
+    if (candidate.reasons.has("text")) score += 36;
+    if (lastSelectorTag(comment.selector) === element.tagName) score += 8;
+    if (textMatches(comment, element)) score += 28;
+    else if (comment.textSnippet) score -= 65;
+    const fingerprintScore = metaScore(comment, element);
+    if (!hasStrongReason(candidate) && hasStrongMeta(comment) && fingerprintScore < 20) return -Infinity;
+    score += fingerprintScore;
+    score += rectScore(comment, element);
+    const childCount = element.children?.length || 0;
+    if (childCount > 8) score -= 12;
+    return score;
+  }
+
   function findTarget(comment) {
+    const candidates = [];
     if (comment.selector) {
       try {
-        const selected = document.querySelector(comment.selector);
-        if (selected) return selected;
+        document.querySelectorAll(comment.selector).forEach((element) => addCandidate(candidates, element, "selector"));
       } catch {}
     }
-    return findByXPath(comment.xpath);
+    addCandidate(candidates, findByXPath(comment.xpath), "xpath");
+    addMetaCandidates(candidates, comment);
+
+    const snippet = String(comment.textSnippet || "").replace(/\s+/g, " ").trim();
+    if (snippet && hasDistinctSnippet(comment)) {
+      const tag = lastSelectorTag(comment.selector);
+      const query = tag ? tag.toLowerCase() : "button,a,input,textarea,select,[role],h1,h2,h3,p,span,div,li,td,th,label";
+      try {
+        document.querySelectorAll(query).forEach((element) => {
+          if (textMatches(comment, element)) addCandidate(candidates, element, "text");
+        });
+      } catch {}
+    }
+
+    let best = null;
+    let bestCandidate = null;
+    let bestScore = -Infinity;
+    candidates.forEach((candidate) => {
+      const score = candidateScore(comment, candidate);
+      if (score > bestScore) {
+        best = candidate.element;
+        bestCandidate = candidate;
+        bestScore = score;
+      }
+    });
+
+    const threshold = bestCandidate && hasStrongReason(bestCandidate) ? 40 : 76;
+    return bestScore >= threshold ? best : null;
   }
 
   function isInspectable(element) {
@@ -119,6 +343,7 @@ export function injectedBridgeScript() {
       textSnippet: (element.innerText || element.textContent || "").replace(/\s+/g, " ").trim().slice(0, 240),
       rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
       viewport: { width: window.innerWidth, height: window.innerHeight, scrollX: window.scrollX, scrollY: window.scrollY },
+      targetMeta: compactMeta(element),
     };
   }
 
@@ -188,12 +413,42 @@ export function injectedBridgeScript() {
       layer.appendChild(marker);
       markers.set(comment.id, marker);
     });
+    resolvePendingLocate();
   }
 
   function rerenderOverlay() {
     renderHover();
     renderLocked();
     renderComments(commentsCache);
+  }
+
+  function scheduleRerender() {
+    window.clearTimeout(rerenderTimer);
+    rerenderTimer = window.setTimeout(rerenderOverlay, 80);
+  }
+
+  function resolvePendingLocate() {
+    if (!pendingLocateComment) return;
+    const target = findTarget(pendingLocateComment);
+    if (!target) return;
+    const comment = pendingLocateComment;
+    pendingLocateComment = null;
+    target.scrollIntoView({ block: "center", inline: "center", behavior: "smooth" });
+    lockedElement = target;
+    window.setTimeout(() => {
+      renderHover();
+      renderLocked();
+      renderComments(commentsCache);
+      const marker = markers.get(comment.id);
+      if (marker) {
+        window.parent.postMessage({
+          source: "html-share-bridge",
+          type: "comment-located",
+          id: comment.id,
+          anchor: markerAnchor(marker)
+        }, "*");
+      }
+    }, 260);
   }
 
   function setMode(enabled) {
@@ -242,6 +497,7 @@ export function injectedBridgeScript() {
     if (message.type === "clear-selection") {
       lockedElement = null;
       hoveredElement = null;
+      pendingLocateComment = null;
       rerenderOverlay();
     }
     if (message.type === "render-comments") renderComments(message.comments || []);
@@ -262,17 +518,27 @@ export function injectedBridgeScript() {
             }, "*");
           }
         }, 260);
+      } else {
+        pendingLocateComment = message.comment || null;
+        window.parent.postMessage({
+          source: "html-share-bridge",
+          type: "comment-missing",
+          id: message.comment?.id
+        }, "*");
       }
     }
   });
 
   window.addEventListener("resize", rerenderOverlay);
-  window.addEventListener("scroll", rerenderOverlay, true);
+  window.addEventListener("scroll", scheduleRerender, true);
+  const observer = new MutationObserver(scheduleRerender);
   window.addEventListener("load", () => {
     ensureLayer();
+    if (document.body) observer.observe(document.body, { attributes: true, childList: true, subtree: true, attributeFilter: ["class", "style", "hidden", "aria-hidden"] });
     window.parent.postMessage({ source: "html-share-bridge", type: "ready" }, "*");
   });
   ensureLayer();
+  if (document.body) observer.observe(document.body, { attributes: true, childList: true, subtree: true, attributeFilter: ["class", "style", "hidden", "aria-hidden"] });
 })();
 `;
 }

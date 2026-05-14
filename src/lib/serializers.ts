@@ -54,6 +54,7 @@ export function serializeComment(comment: CommentWithReplies, viewer: Viewer = {
     textSnippet: comment.textSnippet,
     rect: parseJsonField(comment.rect),
     viewport: parseJsonField(comment.viewport),
+    targetMeta: parseJsonField(comment.targetMeta),
     status: comment.status,
     canDelete: isOwner || Boolean(viewer.isAdmin),
     canEdit: isOwner,

@@ -23,6 +23,7 @@ type ElementTarget = {
   textSnippet: string;
   rect: Record<string, number>;
   viewport: Record<string, number>;
+  targetMeta?: Record<string, unknown>;
 };
 
 type Anchor = {
@@ -87,6 +88,7 @@ export function ReviewWorkspace({
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editingReplyId, setEditingReplyId] = useState<string | null>(null);
   const [editBody, setEditBody] = useState("");
+  const [locateNotice, setLocateNotice] = useState("");
   const [accessPassword, setAccessPassword] = useState("");
   const [settingsNotice, setSettingsNotice] = useState("");
   const [settingsError, setSettingsError] = useState("");
@@ -117,6 +119,7 @@ export function ReviewWorkspace({
       setEditingReplyId(null);
       setEditBody("");
       setReplyError("");
+      setLocateNotice("");
       if (clearFrameSelection) postToFrame({ type: "clear-selection" });
     },
     [postToFrame],
@@ -184,6 +187,7 @@ export function ReviewWorkspace({
       if (message.type === "marker-click" || message.type === "pin-click") {
         const id = String(message.id);
         const comment = comments.find((item) => item.id === id);
+        setLocateNotice("");
         setActiveCommentId(id);
         setActiveAnchor(frameAnchorToStage(message.anchor ?? {}) ?? hoverAnchor);
         if (comment) postToFrame({ type: "locate", comment });
@@ -192,6 +196,13 @@ export function ReviewWorkspace({
         const id = String(message.id);
         setActiveCommentId(id);
         setActiveAnchor(frameAnchorToStage(message.anchor ?? {}) ?? null);
+        setLocateNotice("");
+      }
+      if (message.type === "comment-missing") {
+        const id = String(message.id);
+        setActiveCommentId(id);
+        setActiveAnchor(null);
+        setLocateNotice("当前页面状态里还没有这个批注元素。请先在页面中打开对应弹窗或完成当时的交互，元素出现后会自动定位。");
       }
       if (message.type === "canvas-click") {
         closeActiveComment(false);
@@ -249,6 +260,7 @@ export function ReviewWorkspace({
     setTarget(null);
     setTargetAnchor(null);
     setDraftBody("");
+    setLocateNotice("");
     postToFrame({ type: "clear-selection" });
     syncFrame(next);
   }
@@ -402,6 +414,12 @@ export function ReviewWorkspace({
       <main className="review-stage" onPointerDown={closeFloatingSurfaces} ref={stageRef}>
         <iframe ref={iframeRef} sandbox="allow-scripts allow-forms allow-popups" src={iframeSrc} title={page.title} />
 
+        {locateNotice ? (
+          <div className="stage-toast" role="status">
+            {locateNotice}
+          </div>
+        ) : null}
+
         {target ? (
           <form className="quick-composer" onSubmit={submitDraft} style={floatingStyle(targetAnchor, 500)}>
             <span className="comment-glyph" />
@@ -502,6 +520,7 @@ export function ReviewWorkspace({
             setTargetAnchor(null);
             setActiveCommentId(comment.id);
             setActiveAnchor(null);
+            setLocateNotice("正在定位批注。如果它属于弹窗、菜单或交互后才出现的内容，请先在页面里打开对应状态。");
             postToFrame({ type: "locate", comment });
           }}
         />
