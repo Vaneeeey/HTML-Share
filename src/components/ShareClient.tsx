@@ -50,6 +50,7 @@ export function ShareClient({ accessGranted, identityName, page, initialComments
         <IdentityForm
           buttonLabel="继续"
           description="评论会显示这个名字；同一浏览器 90 天内无需再次输入。"
+          initialName={identityName ?? ""}
           onSaved={() => {
             setEditingName(false);
             router.refresh();
@@ -67,7 +68,12 @@ export function ShareClient({ accessGranted, identityName, page, initialComments
           <div>
             <p className="eyebrow">Access Required</p>
             <h1>等待管理员设置访问密码</h1>
-            <p className="muted">这个旧分享页面还没有访问密码。管理员设置后，评论者才能访问。</p>
+            <p className="muted">
+              这个旧分享页面还没有访问密码。管理员设置后，评论者才能访问。当前身份：{identityName}。{" "}
+              <button className="inline-text-button" onClick={() => setEditingName(true)} type="button">
+                修改名字
+              </button>
+            </p>
           </div>
         </section>
       </main>
@@ -81,7 +87,12 @@ export function ShareClient({ accessGranted, identityName, page, initialComments
           <div>
             <p className="eyebrow">Share Access</p>
             <h1>输入访问密码</h1>
-            <p className="muted">你好，{identityName}。首次访问这个分享链接需要输入页面访问密码。</p>
+            <p className="muted">
+              你好，{identityName}。首次访问这个分享链接需要输入页面访问密码。{" "}
+              <button className="inline-text-button" onClick={() => setEditingName(true)} type="button">
+                修改名字
+              </button>
+            </p>
           </div>
           <label className="field">
             <span>访问密码</span>

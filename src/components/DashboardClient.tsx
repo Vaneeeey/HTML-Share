@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { FormEvent, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { ExternalLink, FileArchive, FileUp, RefreshCw, Trash2 } from "lucide-react";
+import { IdentityForm } from "@/components/IdentityForm";
 import type { SerializedPage } from "@/lib/serializers";
 
 type Props = {
@@ -11,8 +13,10 @@ type Props = {
 };
 
 export function DashboardClient({ identityName, initialPages }: Props) {
+  const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [pages, setPages] = useState(initialPages);
+  const [identityOpen, setIdentityOpen] = useState(false);
   const [accessPassword, setAccessPassword] = useState("");
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
@@ -75,7 +79,12 @@ export function DashboardClient({ identityName, initialPages }: Props) {
         <div>
           <p className="eyebrow">Internal Review Links</p>
           <h1>HTML 评论工作台</h1>
-          <p className="muted">当前身份：{identityName}。上传页面并生成带访问密码的内部评论链接。</p>
+          <p className="muted">
+            当前身份：{identityName}。上传页面并生成带访问密码的内部评论链接。{" "}
+            <button className="inline-text-button" onClick={() => setIdentityOpen(true)} type="button">
+              修改名字
+            </button>
+          </p>
         </div>
         <button className="icon-button" onClick={refreshPages} title="刷新列表" type="button">
           <RefreshCw size={18} />
@@ -150,6 +159,26 @@ export function DashboardClient({ identityName, initialPages }: Props) {
           )}
         </div>
       </section>
+
+      {identityOpen ? (
+        <div className="modal-backdrop">
+          <div className="identity-modal">
+            <IdentityForm
+              buttonLabel="保存名字"
+              description="修改后只影响之后的新评论；历史评论作者名不会改变。"
+              initialName={identityName}
+              onSaved={() => {
+                setIdentityOpen(false);
+                router.refresh();
+              }}
+              title="修改你的名字"
+            />
+            <button className="text-button modal-cancel" onClick={() => setIdentityOpen(false)} type="button">
+              取消
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

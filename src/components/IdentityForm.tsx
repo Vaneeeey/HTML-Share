@@ -6,6 +6,7 @@ import { UserRound } from "lucide-react";
 type Props = {
   buttonLabel?: string;
   description?: string;
+  initialName?: string;
   onSaved: (name: string) => void;
   title?: string;
 };
@@ -13,10 +14,11 @@ type Props = {
 export function IdentityForm({
   buttonLabel = "继续",
   description = "输入你的名字，后续评论会使用这个名字显示。",
+  initialName = "",
   onSaved,
   title = "输入你的名字",
 }: Props) {
-  const [name, setName] = useState("");
+  const [name, setName] = useState(initialName);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 

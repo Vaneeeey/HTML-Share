@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { CSSProperties, FormEvent, PointerEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -15,6 +16,7 @@ import {
   Undo2,
   X,
 } from "lucide-react";
+import { IdentityForm } from "@/components/IdentityForm";
 import type { SerializedComment, SerializedPage, SerializedReply } from "@/lib/serializers";
 
 type ElementTarget = {
@@ -75,12 +77,14 @@ export function ReviewWorkspace({
   isAdmin = false,
   page,
 }: Props) {
+  const router = useRouter();
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const stageRef = useRef<HTMLElement>(null);
   const ignoreCanvasClickUntilRef = useRef(0);
   const [comments, setComments] = useState(initialComments);
   const [mode, setMode] = useState<Mode>(initialMode);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [identityOpen, setIdentityOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [target, setTarget] = useState<ElementTarget | null>(null);
   const [targetAnchor, setTargetAnchor] = useState<Anchor | null>(null);
@@ -420,7 +424,9 @@ export function ReviewWorkspace({
           </div>
         </div>
         <div className="review-topbar-actions">
-          <span className="identity-chip">当前身份：{identityName}</span>
+          <button className="identity-chip" onClick={() => setIdentityOpen(true)} title="修改名字" type="button">
+            当前身份：{identityName}
+          </button>
           <button className="secondary-button" onClick={() => setDrawerOpen((current) => !current)} type="button">
             <PanelRight size={17} />
             全部评论（{totalComments}）
@@ -583,6 +589,26 @@ export function ReviewWorkspace({
             {settingsNotice ? <p className="success-text">{settingsNotice}</p> : null}
             <button className="primary-button" type="submit">保存设置</button>
           </form>
+        </div>
+      ) : null}
+
+      {identityOpen ? (
+        <div className="modal-backdrop">
+          <div className="identity-modal">
+            <IdentityForm
+              buttonLabel="保存名字"
+              description="修改后只影响之后的新评论；历史评论作者名不会改变。"
+              initialName={identityName}
+              onSaved={() => {
+                setIdentityOpen(false);
+                router.refresh();
+              }}
+              title="修改你的名字"
+            />
+            <button className="text-button modal-cancel" onClick={() => setIdentityOpen(false)} type="button">
+              取消
+            </button>
+          </div>
         </div>
       ) : null}
     </div>

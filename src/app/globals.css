@@ -238,6 +238,18 @@ h2 {
   text-decoration: underline;
 }
 
+.inline-text-button {
+  min-height: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent-strong);
+  padding: 0;
+  font: inherit;
+  font-weight: 800;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .error-text,
 .success-text {
   font-size: 14px;
@@ -535,6 +547,13 @@ h2 {
   font-size: 13px;
   font-weight: 750;
   white-space: nowrap;
+  cursor: pointer;
+}
+
+.identity-chip:hover {
+  border-color: #b8dfff;
+  background: #edf8ff;
+  color: #0b5d9f;
 }
 
 .review-stage {
@@ -909,6 +928,21 @@ h2 {
   border: 1px solid #d8d8d8;
   background: #fff;
   box-shadow: 0 24px 70px rgba(15, 23, 42, 0.24);
+}
+
+.identity-modal {
+  width: min(460px, 100%);
+  display: grid;
+  gap: 10px;
+}
+
+.identity-modal .panel {
+  width: 100%;
+}
+
+.modal-cancel {
+  justify-self: center;
+  color: #fff;
 }
 
 @media (max-width: 860px) {
