@@ -1,13 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { CSSProperties, FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { CSSProperties, FormEvent, PointerEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   CheckCircle2,
   ExternalLink,
   MessageCircle,
-  MoreHorizontal,
   MousePointer2,
   PanelRight,
   Send,
@@ -110,6 +109,19 @@ export function ReviewWorkspace({
     [comments, mode, postToFrame],
   );
 
+  const closeActiveComment = useCallback(
+    (clearFrameSelection = true) => {
+      setActiveCommentId(null);
+      setActiveAnchor(null);
+      setEditingCommentId(null);
+      setEditingReplyId(null);
+      setEditBody("");
+      setReplyError("");
+      if (clearFrameSelection) postToFrame({ type: "clear-selection" });
+    },
+    [postToFrame],
+  );
+
   const frameAnchorToStage = useCallback((anchor: Record<string, unknown>): Anchor | null => {
     const iframe = iframeRef.current;
     const stage = stageRef.current;
@@ -176,11 +188,19 @@ export function ReviewWorkspace({
         setActiveAnchor(frameAnchorToStage(message.anchor ?? {}) ?? hoverAnchor);
         if (comment) postToFrame({ type: "locate", comment });
       }
+      if (message.type === "comment-located") {
+        const id = String(message.id);
+        setActiveCommentId(id);
+        setActiveAnchor(frameAnchorToStage(message.anchor ?? {}) ?? null);
+      }
+      if (message.type === "canvas-click") {
+        closeActiveComment(false);
+      }
     }
 
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [comments, frameAnchorToStage, hoverAnchor, postToFrame, syncFrame]);
+  }, [closeActiveComment, comments, frameAnchorToStage, hoverAnchor, postToFrame, syncFrame]);
 
   useEffect(() => syncFrame(), [comments, mode, syncFrame]);
 
@@ -198,7 +218,7 @@ export function ReviewWorkspace({
       syncFrame(next);
       return next;
     });
-    if (activeCommentId === id) setActiveCommentId(null);
+    if (activeCommentId === id) closeActiveComment();
   }
 
   async function submitDraft(event: FormEvent<HTMLFormElement>) {
@@ -231,8 +251,6 @@ export function ReviewWorkspace({
     setDraftBody("");
     postToFrame({ type: "clear-selection" });
     syncFrame(next);
-    setActiveCommentId(data.comment.id);
-    setActiveAnchor(targetAnchor);
   }
 
   async function editComment(comment: SerializedComment) {
@@ -334,6 +352,18 @@ export function ReviewWorkspace({
     }
   }
 
+  function closeFloatingSurfaces(event: PointerEvent<HTMLElement>) {
+    const targetElement = event.target instanceof Element ? event.target : null;
+    if (
+      targetElement?.closest(
+        ".comment-detail-card, .comment-preview-card, .quick-composer, .comment-drawer, .settings-modal",
+      )
+    ) {
+      return;
+    }
+    if (activeComment) closeActiveComment();
+  }
+
   const preview = hoveredComment && !activeComment ? hoveredComment : null;
 
   return (
@@ -352,7 +382,7 @@ export function ReviewWorkspace({
         </div>
         <div className="review-topbar-actions">
           <span className="identity-chip">当前身份：{identityName}</span>
-          <button className="secondary-button" onClick={() => setDrawerOpen(true)} type="button">
+          <button className="secondary-button" onClick={() => setDrawerOpen((current) => !current)} type="button">
             <PanelRight size={17} />
             全部评论（{totalComments}）
           </button>
@@ -369,7 +399,7 @@ export function ReviewWorkspace({
         </div>
       </header>
 
-      <main className="review-stage" ref={stageRef}>
+      <main className="review-stage" onPointerDown={closeFloatingSurfaces} ref={stageRef}>
         <iframe ref={iframeRef} sandbox="allow-scripts allow-forms allow-popups" src={iframeSrc} title={page.title} />
 
         {target ? (
@@ -424,7 +454,7 @@ export function ReviewWorkspace({
             editingCommentId={editingCommentId}
             editingReplyId={editingReplyId}
             isAdmin={isAdmin}
-            onClose={() => setActiveCommentId(null)}
+            onClose={() => closeActiveComment()}
             onDeleteComment={deleteComment}
             onDeleteReply={deleteReply}
             onEditBodyChange={setEditBody}
@@ -468,7 +498,10 @@ export function ReviewWorkspace({
           comments={comments}
           onClose={() => setDrawerOpen(false)}
           onSelect={(comment) => {
+            setTarget(null);
+            setTargetAnchor(null);
             setActiveCommentId(comment.id);
+            setActiveAnchor(null);
             postToFrame({ type: "locate", comment });
           }}
         />
@@ -615,7 +648,7 @@ function CommentDetail({
             <small>{relativeTime(comment.createdAt)}</small>
             {comment.canDelete ? (
               <button className="menu-button" onClick={() => onDeleteComment(comment)} title="删除评论" type="button">
-                <MoreHorizontal size={18} />
+                <Trash2 size={16} />
               </button>
             ) : null}
           </div>

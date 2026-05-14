@@ -222,8 +222,10 @@ export function injectedBridgeScript() {
   }, true);
 
   document.addEventListener("click", (event) => {
-    if (!commentMode) return;
     const target = event.target;
+    if (target instanceof Element && target.closest("[data-html-share-layer]")) return;
+    window.parent.postMessage({ source: "html-share-bridge", type: "canvas-click" }, "*");
+    if (!commentMode) return;
     if (!isInspectable(target)) return;
     event.preventDefault();
     event.stopPropagation();
@@ -239,6 +241,7 @@ export function injectedBridgeScript() {
     if (message.type === "set-mode") setMode(message.enabled);
     if (message.type === "clear-selection") {
       lockedElement = null;
+      hoveredElement = null;
       rerenderOverlay();
     }
     if (message.type === "render-comments") renderComments(message.comments || []);
@@ -247,7 +250,18 @@ export function injectedBridgeScript() {
       if (target) {
         target.scrollIntoView({ block: "center", inline: "center", behavior: "smooth" });
         lockedElement = target;
-        window.setTimeout(rerenderOverlay, 260);
+        window.setTimeout(() => {
+          rerenderOverlay();
+          const marker = markers.get(message.comment?.id);
+          if (marker) {
+            window.parent.postMessage({
+              source: "html-share-bridge",
+              type: "comment-located",
+              id: message.comment.id,
+              anchor: markerAnchor(marker)
+            }, "*");
+          }
+        }, 260);
       }
     }
   });
