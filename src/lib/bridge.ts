@@ -581,12 +581,19 @@ export function injectedBridgeScript() {
       marker.addEventListener("pointerleave", () => {
         window.parent.postMessage({ source: "html-share-bridge", type: "marker-leave", id: comment.id }, "*");
       });
-      marker.addEventListener("click", () => {
+      let markerOpenedAt = 0;
+      function openMarker(event) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (Date.now() - markerOpenedAt < 250) return;
+        markerOpenedAt = Date.now();
         lockedElement = target;
         renderHover();
         renderLocked();
         window.parent.postMessage({ source: "html-share-bridge", type: "marker-click", id: comment.id, anchor: markerAnchor(marker), reason: "user-open" }, "*");
-      });
+      }
+      marker.addEventListener("pointerdown", openMarker);
+      marker.addEventListener("click", openMarker);
       layer.appendChild(marker);
       markers.set(comment.id, marker);
     });

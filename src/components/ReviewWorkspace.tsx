@@ -77,6 +77,7 @@ export function ReviewWorkspace({
 }: Props) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const stageRef = useRef<HTMLElement>(null);
+  const ignoreCanvasClickUntilRef = useRef(0);
   const [comments, setComments] = useState(initialComments);
   const [mode, setMode] = useState<Mode>(initialMode);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -206,6 +207,7 @@ export function ReviewWorkspace({
       if (message.type === "marker-click" || message.type === "pin-click") {
         const id = String(message.id);
         const comment = comments.find((item) => item.id === id);
+        ignoreCanvasClickUntilRef.current = Date.now() + 400;
         setLocateNotice("");
         setLocateHint(null);
         setActiveCommentId(id);
@@ -228,6 +230,7 @@ export function ReviewWorkspace({
         setLocateNotice("当前页面状态里还没有这个批注元素。请先在页面中打开对应弹窗或完成当时的交互，元素出现后会自动定位。");
       }
       if (message.type === "canvas-click") {
+        if (Date.now() < ignoreCanvasClickUntilRef.current) return;
         closeActiveComment(false);
       }
     }
