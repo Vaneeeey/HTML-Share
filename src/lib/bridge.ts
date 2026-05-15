@@ -29,16 +29,19 @@ export function injectedBridgeScript() {
   const lockedBox = document.createElement("div");
   lockedBox.className = "html-share-selection html-share-selection-locked";
 
-  const cursorSvg = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Cpath d='M8 5h11a8 8 0 0 1 8 8v1a8 8 0 0 1-8 8h-6l-7 5v-7a8 8 0 0 1 2-15Z' fill='%231a9cff' stroke='white' stroke-width='2'/%3E%3C/svg%3E\") 8 8, crosshair";
+  const cursorSvg = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='34' height='34' viewBox='0 0 34 34'%3E%3Cpath d='M17 5.5c-6.1 0-11 4.2-11 9.4 0 2.8 1.4 5.3 3.7 7l-.8 5.1 5.5-3.1c.8.2 1.7.3 2.6.3 6.1 0 11-4.2 11-9.3S23.1 5.5 17 5.5Z' fill='%233370ff' stroke='white' stroke-width='2.4' stroke-linejoin='round'/%3E%3Ccircle cx='12.8' cy='15' r='1.45' fill='white'/%3E%3Ccircle cx='17' cy='15' r='1.45' fill='white'/%3E%3Ccircle cx='21.2' cy='15' r='1.45' fill='white'/%3E%3C/svg%3E\") 9 9, crosshair";
   const style = document.createElement("style");
   style.textContent = [
     ".html-share-comment-mode, .html-share-comment-mode * { cursor: " + cursorSvg + " !important; }",
-    ".html-share-selection { position: absolute; display: none; box-sizing: border-box; border: 2px solid #1a9cff; background: rgba(26,156,255,.12); box-shadow: 0 0 0 1px rgba(255,255,255,.95), 0 8px 24px rgba(26,156,255,.18); border-radius: 4px; pointer-events: none; transition: left 80ms ease, top 80ms ease, width 80ms ease, height 80ms ease; }",
-    ".html-share-selection-locked { background: rgba(26,156,255,.18); box-shadow: 0 0 0 1px rgba(255,255,255,.95), 0 0 0 4px rgba(26,156,255,.22), 0 14px 34px rgba(26,156,255,.24); }",
-    ".html-share-marker { position: absolute; width: 38px; height: 38px; border: 0; background: transparent; pointer-events: auto; cursor: pointer !important; padding: 0; filter: drop-shadow(0 10px 18px rgba(15, 23, 42, .22)); }",
-    ".html-share-marker-shell { position: absolute; inset: 0; border-radius: 999px 999px 999px 7px; background: white; border: 2px solid #1a9cff; display: grid; place-items: center; transform: rotate(-45deg); }",
-    ".html-share-marker-avatar { width: 24px; height: 24px; border-radius: 999px; display: grid; place-items: center; color: white; background: #1a9cff; font: 800 12px ui-sans-serif, system-ui; transform: rotate(45deg); }",
-    ".html-share-marker.resolved { opacity: .58; filter: grayscale(1) drop-shadow(0 8px 14px rgba(15, 23, 42, .18)); }"
+    ".html-share-selection { position: absolute; display: none; box-sizing: border-box; border: 1.5px solid #3370ff; background: rgba(51,112,255,.10); box-shadow: 0 0 0 1px rgba(255,255,255,.96), 0 8px 22px rgba(51,112,255,.16); border-radius: 6px; pointer-events: none; transition: left 80ms ease, top 80ms ease, width 80ms ease, height 80ms ease; }",
+    ".html-share-selection::before { content: ''; position: absolute; inset: -4px; border: 1px solid rgba(51,112,255,.18); border-radius: 9px; }",
+    ".html-share-selection-locked { background: rgba(51,112,255,.14); box-shadow: 0 0 0 1px rgba(255,255,255,.96), 0 0 0 4px rgba(51,112,255,.16), 0 14px 34px rgba(51,112,255,.20); }",
+    ".html-share-marker { position: absolute; width: 36px; height: 36px; border: 0; background: transparent; pointer-events: auto; cursor: pointer !important; padding: 0; filter: none; transition: transform 140ms ease, opacity 140ms ease; }",
+    ".html-share-marker:hover { transform: translateY(-1px) scale(1.04); filter: none; }",
+    ".html-share-marker-shell { position: absolute; inset: 0; border-radius: 999px 999px 999px 9px; background: #fff; border: 1.5px solid #3370ff; display: grid; place-items: center; transform: rotate(-45deg); box-shadow: none; }",
+    ".html-share-marker-shell::after { content: none; }",
+    ".html-share-marker-avatar { width: 22px; height: 22px; border-radius: 999px; display: grid; place-items: center; color: white; background: #3370ff; font: 700 11px -apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',sans-serif; transform: rotate(45deg); box-shadow: none; }",
+    ".html-share-marker.resolved { opacity: .52; filter: grayscale(.95); }"
   ].join("\n");
 
   function ensureLayer() {
@@ -509,15 +512,28 @@ export function injectedBridgeScript() {
     return rect.width > 0 && rect.height > 0;
   }
 
-  function payloadFor(element) {
+  function clickOffsetFor(rect, event) {
+    const x = Math.min(Math.max(0, event.clientX - rect.left), Math.max(0, rect.width));
+    const y = Math.min(Math.max(0, event.clientY - rect.top), Math.max(0, rect.height));
+    return {
+      x,
+      y,
+      ratioX: rect.width ? x / rect.width : 0,
+      ratioY: rect.height ? y / rect.height : 0
+    };
+  }
+
+  function payloadFor(element, event) {
     const rect = element.getBoundingClientRect();
+    const clickOffset = clickOffsetFor(rect, event);
     return {
       selector: cssPath(element),
       xpath: xpathFor(element),
       textSnippet: (element.innerText || element.textContent || "").replace(/\s+/g, " ").trim().slice(0, 240),
       rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+      clickAnchor: { x: event.clientX - 1, y: event.clientY - 1, width: 2, height: 2 },
       viewport: { width: window.innerWidth, height: window.innerHeight, scrollX: window.scrollX, scrollY: window.scrollY },
-      targetMeta: { ...compactMeta(element), interactionPath: lastSafeInteractions.map(({ fingerprint, ...step }) => step) },
+      targetMeta: { ...compactMeta(element), clickOffset, interactionPath: lastSafeInteractions.map(({ fingerprint, ...step }) => step) },
     };
   }
 
@@ -558,6 +574,27 @@ export function injectedBridgeScript() {
     return { x: rect.left, y: rect.top, width: rect.width, height: rect.height };
   }
 
+  function markerPoint(comment, rect) {
+    const offset = comment.targetMeta?.clickOffset || {};
+    const ratioX = Number(offset.ratioX);
+    const ratioY = Number(offset.ratioY);
+    if (Number.isFinite(ratioX) && Number.isFinite(ratioY)) {
+      return {
+        x: rect.left + window.scrollX + Math.min(Math.max(0, ratioX), 1) * rect.width,
+        y: rect.top + window.scrollY + Math.min(Math.max(0, ratioY), 1) * rect.height
+      };
+    }
+    const x = Number(offset.x);
+    const y = Number(offset.y);
+    if (Number.isFinite(x) && Number.isFinite(y)) {
+      return {
+        x: rect.left + window.scrollX + Math.min(Math.max(0, x), rect.width),
+        y: rect.top + window.scrollY + Math.min(Math.max(0, y), rect.height)
+      };
+    }
+    return { x: rect.left + window.scrollX, y: rect.top + window.scrollY };
+  }
+
   function renderComments(comments) {
     ensureLayer();
     commentsCache = comments || [];
@@ -573,8 +610,9 @@ export function injectedBridgeScript() {
       marker.title = comment.body || "Comment";
       marker.innerHTML = "<span class='html-share-marker-shell'><span class='html-share-marker-avatar'></span></span>";
       marker.querySelector(".html-share-marker-avatar").textContent = firstChar(comment.authorName);
-      marker.style.left = Math.max(0, rect.left + window.scrollX - 19) + "px";
-      marker.style.top = Math.max(0, rect.top + window.scrollY - 19) + "px";
+      const point = markerPoint(comment, rect);
+      marker.style.left = Math.max(0, point.x - 18) + "px";
+      marker.style.top = Math.max(0, point.y - 18) + "px";
       marker.addEventListener("pointerenter", () => {
         window.parent.postMessage({ source: "html-share-bridge", type: "marker-hover", id: comment.id, anchor: markerAnchor(marker) }, "*");
       });
@@ -677,7 +715,7 @@ export function injectedBridgeScript() {
     lockedElement = target;
     renderHover();
     renderLocked();
-    window.parent.postMessage({ source: "html-share-bridge", type: "element-click", payload: payloadFor(target) }, "*");
+    window.parent.postMessage({ source: "html-share-bridge", type: "element-click", payload: payloadFor(target, event) }, "*");
   }, true);
 
   window.addEventListener("message", (event) => {

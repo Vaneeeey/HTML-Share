@@ -47,6 +47,7 @@ function normalizeTargetMeta(value: unknown): Record<string, unknown> {
     href: shortString(input.href, 240),
     path: shortString(input.path, 500),
     depth: boundedNumber(input.depth, 0, 80),
+    clickOffset: normalizeClickOffset(input.clickOffset),
     stableAncestor: normalizeAncestor(input.stableAncestor),
     hierarchy: Array.isArray(input.hierarchy)
       ? input.hierarchy.slice(0, 12).map((item): Record<string, unknown> => normalizeHierarchyItem(item))
@@ -57,6 +58,17 @@ function normalizeTargetMeta(value: unknown): Record<string, unknown> {
     ancestors: Array.isArray(input.ancestors)
       ? input.ancestors.slice(0, 5).map((item): Record<string, unknown> => normalizeAncestor(item))
       : [],
+  };
+}
+
+function normalizeClickOffset(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const input = value as Record<string, unknown>;
+  return {
+    x: boundedNumber(input.x, 0, 100000),
+    y: boundedNumber(input.y, 0, 100000),
+    ratioX: boundedFloat(input.ratioX, 0, 1),
+    ratioY: boundedFloat(input.ratioY, 0, 1),
   };
 }
 
@@ -100,6 +112,12 @@ function boundedNumber(value: unknown, min: number, max: number) {
   const number = Number(value);
   if (!Number.isFinite(number)) return min;
   return Math.min(max, Math.max(min, Math.round(number)));
+}
+
+function boundedFloat(value: unknown, min: number, max: number) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return min;
+  return Math.min(max, Math.max(min, number));
 }
 
 function shortString(value: unknown, maxLength: number) {

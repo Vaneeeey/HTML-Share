@@ -27,6 +27,7 @@ describe("comment validation", () => {
         classes: ["primary", "large", "x".repeat(100)],
         role: "button",
         ariaLabel: "Submit",
+        clickOffset: { x: 18.4, y: 9.8, ratioX: 0.37, ratioY: 0.62 },
         path: "main > div#dialog > button#modal-submit",
         hierarchy: [
           { tag: "main", id: "root", index: 1, text: "Modal content Submit" },
@@ -55,6 +56,7 @@ describe("comment validation", () => {
       classes: ["primary", "large", "x".repeat(80)],
       role: "button",
       ariaLabel: "Submit",
+      clickOffset: { x: 18, y: 10, ratioX: 0.37, ratioY: 0.62 },
       path: "main > div#dialog > button#modal-submit",
     });
     expect(targetMeta.hierarchy).toHaveLength(3);

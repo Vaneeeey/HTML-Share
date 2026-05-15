@@ -25,6 +25,7 @@ type ElementTarget = {
   xpath: string;
   textSnippet: string;
   rect: Record<string, number>;
+  clickAnchor?: Record<string, number>;
   viewport: Record<string, number>;
   targetMeta?: Record<string, unknown>;
 };
@@ -217,7 +218,7 @@ export function ReviewWorkspace({
       if (message.type === "element-click") {
         const payload = message.payload as ElementTarget;
         setTarget(payload);
-        setTargetAnchor(frameAnchorToStage(payload.rect));
+        setTargetAnchor(frameAnchorToStage(payload.clickAnchor ?? payload.rect));
         setDraftError("");
       }
       if (message.type === "marker-hover") {
