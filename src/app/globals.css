@@ -769,7 +769,7 @@ h3 {
   backdrop-filter: blur(14px);
 }
 
-.mode-toolbar button {
+.mode-toolbar > button {
   min-height: 34px;
   display: inline-flex;
   align-items: center;
@@ -784,14 +784,79 @@ h3 {
   cursor: pointer;
 }
 
-.mode-toolbar button:hover {
+.mode-toolbar > button:hover {
   background: #f2f3f5;
   color: var(--foreground);
 }
 
-.mode-toolbar button.active {
+.mode-toolbar > button.active {
   background: var(--accent);
   color: white;
+}
+
+.toolbar-tour {
+  position: absolute;
+  bottom: calc(100% + 12px);
+  width: 276px;
+  padding: 14px 14px 12px;
+  border: 1px solid rgba(31, 35, 41, 0.1);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 14px 38px rgba(31, 35, 41, 0.16);
+  color: var(--foreground);
+  text-align: left;
+}
+
+.toolbar-tour.interact-step {
+  left: 0;
+}
+
+.toolbar-tour.comment-step {
+  right: 0;
+}
+
+.toolbar-tour::after {
+  content: "";
+  position: absolute;
+  bottom: -6px;
+  width: 10px;
+  height: 10px;
+  border-right: 1px solid rgba(31, 35, 41, 0.1);
+  border-bottom: 1px solid rgba(31, 35, 41, 0.1);
+  background: #fff;
+  transform: rotate(45deg);
+}
+
+.toolbar-tour.interact-step::after {
+  left: 42px;
+}
+
+.toolbar-tour.comment-step::after {
+  right: 42px;
+}
+
+.toolbar-tour strong {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.toolbar-tour p {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.toolbar-tour .text-button {
+  min-height: 28px;
+  padding: 0;
+  border: 0;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 700;
+  background: transparent;
 }
 
 .quick-composer,
@@ -1285,7 +1350,27 @@ h3 {
     bottom: 12px;
   }
 
-  .mode-toolbar button {
+  .mode-toolbar > button {
     padding: 0 10px;
+  }
+
+  .toolbar-tour {
+    left: 50%;
+    right: auto;
+    width: min(288px, calc(100vw - 32px));
+    transform: translateX(-50%);
+  }
+
+  .toolbar-tour.interact-step,
+  .toolbar-tour.comment-step {
+    left: 50%;
+    right: auto;
+  }
+
+  .toolbar-tour.interact-step::after,
+  .toolbar-tour.comment-step::after {
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%) rotate(45deg);
   }
 }

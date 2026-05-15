@@ -38,6 +38,9 @@ type Anchor = {
 };
 
 type Mode = "comment" | "interact";
+type TourStep = "comment" | "interact" | null;
+
+const REVIEW_TOOLBAR_TOUR_KEY = "html_share_review_toolbar_tour_20260515";
 
 type LocateHint = {
   title?: string;
@@ -120,6 +123,7 @@ export function ReviewWorkspace({
   const [settingsNotice, setSettingsNotice] = useState("");
   const [settingsError, setSettingsError] = useState("");
   const [stageSize, setStageSize] = useState({ height: 1, width: 1 });
+  const [tourStep, setTourStep] = useState<TourStep>(null);
 
   const pageState = uploadedPage ?? page;
   const currentVersion = pageVersion(pageState.currentVersion);
@@ -209,6 +213,19 @@ export function ReviewWorkspace({
     observer.observe(stage);
     return () => observer.disconnect();
   }, []);
+
+  useEffect(() => {
+    if (isAdmin) return;
+
+    const startTour = () => setTourStep("interact");
+    try {
+      if (window.localStorage.getItem(REVIEW_TOOLBAR_TOUR_KEY) === "done") return;
+      const timer = window.setTimeout(startTour, 450);
+      return () => window.clearTimeout(timer);
+    } catch {
+      startTour();
+    }
+  }, [isAdmin]);
 
   useEffect(() => {
     function onMessage(event: MessageEvent) {
@@ -463,6 +480,20 @@ export function ReviewWorkspace({
     }
   }
 
+  function advanceTour() {
+    if (tourStep === "interact") {
+      setTourStep("comment");
+      return;
+    }
+
+    setTourStep(null);
+    try {
+      window.localStorage.setItem(REVIEW_TOOLBAR_TOUR_KEY, "done");
+    } catch {
+      // Ignore storage failures; the tour is non-critical UI guidance.
+    }
+  }
+
   function closeFloatingSurfaces(event: PointerEvent<HTMLElement>) {
     const targetElement = event.target instanceof Element ? event.target : null;
     if (
@@ -614,6 +645,7 @@ export function ReviewWorkspace({
             <MessageCircle size={19} />
             评论模式
           </button>
+          {tourStep ? <ToolbarTour step={tourStep} onNext={advanceTour} /> : null}
         </nav>
       ) : null}
 
@@ -724,6 +756,24 @@ export function ReviewWorkspace({
         </div>
       ) : null}
     </div>
+  );
+}
+
+function ToolbarTour({ onNext, step }: { onNext: () => void; step: Exclude<TourStep, null> }) {
+  const isCommentStep = step === "comment";
+
+  return (
+    <section className={`toolbar-tour ${isCommentStep ? "comment-step" : "interact-step"}`} role="status">
+      <strong>{isCommentStep ? "评论模式" : "交互模式"}</strong>
+      <p>
+        {isCommentStep
+          ? "切到评论模式后，移动到页面元素会出现蓝色高亮，点击任意位置即可添加批注。"
+          : "交互模式下可以正常点击、滚动和使用页面，不会误触发新增评论。"}
+      </p>
+      <button className="text-button" onClick={onNext} type="button">
+        {isCommentStep ? "知道了" : "下一步"}
+      </button>
+    </section>
   );
 }
 
