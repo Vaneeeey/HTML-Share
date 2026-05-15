@@ -4,7 +4,8 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
 export const adminCookieName = "html_share_admin";
-export const identityCookieName = "html_share_identity";
+export const identityCookieName = "html_share_identity_v2";
+const previousIdentityCookieNames = ["html_share_identity"];
 const adminMaxAgeSeconds = 60 * 60 * 24 * 14;
 export const identityMaxAgeSeconds = 60 * 60 * 24 * 90;
 
@@ -130,6 +131,18 @@ export async function getIdentityFromCookies() {
 
 export function getIdentityFromRequest(request: NextRequest) {
   return verifyIdentityToken(request.cookies.get(identityCookieName)?.value);
+}
+
+export function getReusableIdentityFromRequest(request: NextRequest) {
+  const currentIdentity = getIdentityFromRequest(request);
+  if (currentIdentity) return currentIdentity;
+
+  for (const cookieName of previousIdentityCookieNames) {
+    const identity = verifyIdentityToken(request.cookies.get(cookieName)?.value);
+    if (identity) return identity;
+  }
+
+  return null;
 }
 
 export function unauthorized() {

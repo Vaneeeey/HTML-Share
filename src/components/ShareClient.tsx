@@ -2,7 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-import { KeyRound } from "lucide-react";
+import { KeyRound, UserRound } from "lucide-react";
 import { IdentityForm } from "@/components/IdentityForm";
 import { ReviewWorkspace } from "@/components/ReviewWorkspace";
 import type { SerializedComment, SerializedPage } from "@/lib/serializers";
@@ -18,6 +18,7 @@ type Props = {
 export function ShareClient({ accessGranted, identityName, page, initialComments }: Props) {
   const router = useRouter();
   const [editingName, setEditingName] = useState(false);
+  const [name, setName] = useState("");
   const [accessPassword, setAccessPassword] = useState("");
   const [accessError, setAccessError] = useState("");
   const [checkingAccess, setCheckingAccess] = useState(false);
@@ -44,7 +45,42 @@ export function ShareClient({ accessGranted, identityName, page, initialComments
     router.refresh();
   }
 
-  if (!identityName || editingName) {
+  async function submitIdentityAndAccess(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCheckingAccess(true);
+    setAccessError("");
+
+    const identityResponse = await fetch("/api/identity", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    const identityData = (await identityResponse.json().catch(() => ({}))) as { error?: string };
+
+    if (!identityResponse.ok) {
+      setCheckingAccess(false);
+      setAccessError(identityData.error ?? "名字保存失败");
+      return;
+    }
+
+    const accessResponse = await fetch(`/api/share/${page.slug}/access`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: accessPassword }),
+    });
+    const accessData = (await accessResponse.json().catch(() => ({}))) as { error?: string };
+
+    setCheckingAccess(false);
+
+    if (!accessResponse.ok) {
+      setAccessError(accessData.error ?? "访问密码错误");
+      return;
+    }
+
+    router.refresh();
+  }
+
+  if (editingName) {
     return (
       <main className="center-screen">
         <IdentityForm
@@ -56,6 +92,57 @@ export function ShareClient({ accessGranted, identityName, page, initialComments
             router.refresh();
           }}
           title={identityName ? "修改你的名字" : "先输入你的名字"}
+        />
+      </main>
+    );
+  }
+
+  if (!identityName && page.hasAccessPassword) {
+    return (
+      <main className="center-screen">
+        <form className="panel narrow-panel" onSubmit={submitIdentityAndAccess}>
+          <div>
+            <p className="eyebrow">Share Access</p>
+            <h1>进入评论页</h1>
+            <p className="muted">首次访问需要填写你的名字和页面访问密码；之后同一浏览器会自动记住。</p>
+          </div>
+          <label className="field">
+            <span>名字</span>
+            <input
+              autoFocus
+              onChange={(event) => setName(event.target.value)}
+              placeholder="例如：Fan"
+              value={name}
+            />
+          </label>
+          <label className="field">
+            <span>访问密码</span>
+            <input
+              onChange={(event) => setAccessPassword(event.target.value)}
+              placeholder="由分享者提供"
+              type="password"
+              value={accessPassword}
+            />
+          </label>
+          {accessError ? <p className="error-text">{accessError}</p> : null}
+          <button className="primary-button" disabled={checkingAccess} type="submit">
+            {checkingAccess ? <KeyRound size={18} /> : <UserRound size={18} />}
+            {checkingAccess ? "验证中" : "进入评论页"}
+          </button>
+        </form>
+      </main>
+    );
+  }
+
+  if (!identityName) {
+    return (
+      <main className="center-screen">
+        <IdentityForm
+          buttonLabel="继续"
+          description="评论会显示这个名字；同一浏览器 90 天内无需再次输入。"
+          initialName=""
+          onSaved={() => router.refresh()}
+          title="先输入你的名字"
         />
       </main>
     );

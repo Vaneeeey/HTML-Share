@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   createIdentityToken,
-  getIdentityFromRequest,
+  getReusableIdentityFromRequest,
   identityCookieName,
   identityCookieOptions,
   normalizeIdentityName,
@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
   try {
     const input = (await request.json().catch(() => ({}))) as { name?: unknown };
     const name = normalizeIdentityName(input.name);
-    const existingIdentity = getIdentityFromRequest(request);
+    const existingIdentity = getReusableIdentityFromRequest(request);
     const response = NextResponse.json({ ok: true, name });
     response.cookies.set(
       identityCookieName,

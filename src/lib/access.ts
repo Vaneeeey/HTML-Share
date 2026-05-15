@@ -42,7 +42,7 @@ export function verifyAccessPassword(value: unknown, storedHash: string | null) 
 }
 
 export function shareAccessCookieName(pageId: string) {
-  return `html_share_access_${pageId}`;
+  return `html_share_access_v2_${pageId}`;
 }
 
 function signAccessPayload(payload: string, accessPasswordHash: string) {
