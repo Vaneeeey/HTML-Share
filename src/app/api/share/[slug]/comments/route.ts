@@ -52,6 +52,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ sl
       data: {
         id: newId(),
         pageId: page.id,
+        pageVersion: page.currentVersion,
         authorIdentityId: actor.identityId,
         authorName: actor.name,
         ...input,

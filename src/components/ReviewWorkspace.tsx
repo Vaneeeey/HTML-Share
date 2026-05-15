@@ -7,6 +7,7 @@ import {
   ArrowLeft,
   CheckCircle2,
   ExternalLink,
+  FileUp,
   MessageCircle,
   MousePointer2,
   PanelRight,
@@ -70,6 +71,14 @@ function commentCountLabel(comments: SerializedComment[]) {
   return comments.reduce((total, comment) => total + 1 + comment.replies.length, 0);
 }
 
+function pageVersion(value?: number) {
+  return Number.isFinite(value) && Number(value) > 0 ? Number(value) : 1;
+}
+
+function versionLabel(value?: number) {
+  return `第${pageVersion(value)}版`;
+}
+
 export function ReviewWorkspace({
   identityName,
   initialComments,
@@ -78,10 +87,13 @@ export function ReviewWorkspace({
   page,
 }: Props) {
   const router = useRouter();
+  const reuploadInputRef = useRef<HTMLInputElement>(null);
+  const updateInputRef = useRef<HTMLInputElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const stageRef = useRef<HTMLElement>(null);
   const ignoreCanvasClickUntilRef = useRef(0);
   const [comments, setComments] = useState(initialComments);
+  const [uploadedPage, setUploadedPage] = useState<SerializedPage | null>(null);
   const [mode, setMode] = useState<Mode>(initialMode);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [identityOpen, setIdentityOpen] = useState(false);
@@ -103,14 +115,21 @@ export function ReviewWorkspace({
   const [locateNotice, setLocateNotice] = useState("");
   const [locateHint, setLocateHint] = useState<LocateHint | null>(null);
   const [accessPassword, setAccessPassword] = useState("");
+  const [uploadingPageFile, setUploadingPageFile] = useState<"reupload" | "update" | null>(null);
   const [settingsNotice, setSettingsNotice] = useState("");
   const [settingsError, setSettingsError] = useState("");
   const [stageSize, setStageSize] = useState({ height: 1, width: 1 });
 
-  const iframeSrc = `/uploads/${page.id}/${page.entryPath}`;
+  const pageState = uploadedPage ?? page;
+  const currentVersion = pageVersion(pageState.currentVersion);
+  const iframeSrc = `/uploads/${pageState.id}/${pageState.entryPath}?v=${currentVersion}-${encodeURIComponent(pageState.updatedAt)}`;
   const activeComment = comments.find((comment) => comment.id === activeCommentId) ?? null;
   const hoveredComment = comments.find((comment) => comment.id === hoveredCommentId) ?? null;
   const totalComments = commentCountLabel(comments);
+  const currentVersionComments = useCallback(
+    (items: SerializedComment[]) => items.filter((comment) => pageVersion(comment.pageVersion) === currentVersion),
+    [currentVersion],
+  );
 
   const postToFrame = useCallback((message: Record<string, unknown>) => {
     iframeRef.current?.contentWindow?.postMessage({ source: "html-share-parent", ...message }, "*");
@@ -119,9 +138,9 @@ export function ReviewWorkspace({
   const syncFrame = useCallback(
     (nextComments = comments, nextMode = mode) => {
       postToFrame({ type: "set-mode", enabled: nextMode === "comment" });
-      postToFrame({ type: "render-comments", comments: nextComments });
+      postToFrame({ type: "render-comments", comments: currentVersionComments(nextComments) });
     },
-    [comments, mode, postToFrame],
+    [comments, currentVersionComments, mode, postToFrame],
   );
 
   const closeActiveComment = useCallback(
@@ -372,7 +391,7 @@ export function ReviewWorkspace({
     event.preventDefault();
     setSettingsError("");
     setSettingsNotice("");
-    const response = await fetch(`/api/pages/${page.id}`, {
+    const response = await fetch(`/api/pages/${pageState.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ accessPassword }),
@@ -384,6 +403,54 @@ export function ReviewWorkspace({
     }
     setAccessPassword("");
     setSettingsNotice("访问密码已更新，旧访问授权已失效。");
+  }
+
+  async function uploadPageFile(event: FormEvent<HTMLFormElement>, mode: "reupload" | "update") {
+    event.preventDefault();
+    const input = mode === "reupload" ? reuploadInputRef.current : updateInputRef.current;
+    const file = input?.files?.[0];
+    if (!file) {
+      setSettingsError("请选择要上传的 HTML 或 ZIP 文件。");
+      return;
+    }
+
+    setUploadingPageFile(mode);
+    setSettingsError("");
+    setSettingsNotice("");
+
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("mode", mode);
+
+    const response = await fetch(`/api/pages/${pageState.id}/upload`, {
+      method: "POST",
+      body: formData,
+    });
+    const data = (await response.json().catch(() => ({}))) as {
+      comments?: SerializedComment[];
+      error?: string;
+      page?: SerializedPage;
+    };
+
+    setUploadingPageFile(null);
+
+    if (!response.ok || !data.page || !data.comments) {
+      setSettingsError(data.error ?? "文件上传失败");
+      return;
+    }
+
+    setUploadedPage(data.page);
+    setComments(data.comments);
+    setTarget(null);
+    setTargetAnchor(null);
+    closeActiveComment();
+    if (input) input.value = "";
+    setSettingsNotice(
+      mode === "update"
+        ? `HTML 已更新为${versionLabel(data.page.currentVersion)}，旧版本评论图标已从页面隐藏。`
+        : "HTML 已重新上传，当前版本号保持不变。",
+    );
+    router.refresh();
   }
 
   function changeMode(nextMode: Mode) {
@@ -420,7 +487,10 @@ export function ReviewWorkspace({
           ) : null}
           <div>
             <p className="eyebrow">{isAdmin ? "Review Queue" : "Share Link"}</p>
-            <h1>{page.title}</h1>
+            <h1>
+              {pageState.title}
+              {currentVersion > 1 ? <span className="version-pill">{versionLabel(currentVersion)}</span> : null}
+            </h1>
           </div>
         </div>
         <div className="review-topbar-actions">
@@ -436,7 +506,7 @@ export function ReviewWorkspace({
               <button className="icon-button" onClick={() => setSettingsOpen(true)} title="设置" type="button">
                 <Settings size={18} />
               </button>
-              <Link className="icon-button" href={`/s/${page.slug}`} target="_blank" title="打开分享页">
+              <Link className="icon-button" href={`/s/${pageState.slug}`} target="_blank" title="打开分享页">
                 <ExternalLink size={18} />
               </Link>
             </>
@@ -445,7 +515,7 @@ export function ReviewWorkspace({
       </header>
 
       <main className="review-stage" onPointerDown={closeFloatingSurfaces} ref={stageRef}>
-        <iframe ref={iframeRef} sandbox="allow-scripts allow-forms allow-popups" src={iframeSrc} title={page.title} />
+        <iframe ref={iframeRef} sandbox="allow-scripts allow-forms allow-popups" src={iframeSrc} title={pageState.title} />
 
         {locateNotice ? (
           <div className="stage-toast" role="status">
@@ -549,6 +619,7 @@ export function ReviewWorkspace({
       {drawerOpen ? (
         <CommentDrawer
           comments={comments}
+          currentVersion={currentVersion}
           onClose={() => setDrawerOpen(false)}
           onSelect={(comment) => {
             setTarget(null);
@@ -556,6 +627,13 @@ export function ReviewWorkspace({
             setActiveCommentId(comment.id);
             setActiveAnchor(null);
             setLocateHint(null);
+            if (pageVersion(comment.pageVersion) !== currentVersion) {
+              postToFrame({ type: "clear-selection" });
+              setLocateNotice(
+                `这条评论属于${versionLabel(comment.pageVersion)}，当前 HTML 是${versionLabel(currentVersion)}，旧版本评论不会在当前页面显示图标。`,
+              );
+              return;
+            }
             setLocateNotice("正在定位批注。如果它属于弹窗、菜单或交互后才出现的内容，请先在页面里打开对应状态。");
             postToFrame({ type: "locate", comment, reason: "user-open", openDetail: true });
           }}
@@ -564,31 +642,64 @@ export function ReviewWorkspace({
 
       {settingsOpen ? (
         <div className="modal-backdrop">
-          <form className="settings-modal" onSubmit={updateAccessPassword}>
+          <div className="settings-modal">
             <div className="composer-head">
               <div>
                 <p className="eyebrow">Page Settings</p>
-                <h2>修改访问密码</h2>
+                <h2>页面设置</h2>
               </div>
               <button className="icon-button" onClick={() => setSettingsOpen(false)} type="button">
                 <X size={18} />
               </button>
             </div>
-            <label className="field">
-              <span>新访问密码</span>
-              <input
-                minLength={4}
-                onChange={(event) => setAccessPassword(event.target.value)}
-                placeholder="至少 4 位"
-                required
-                type="password"
-                value={accessPassword}
-              />
-            </label>
+
+            <form className="settings-section" onSubmit={updateAccessPassword}>
+              <h3>访问密码</h3>
+              <label className="field">
+                <span>新访问密码</span>
+                <input
+                  minLength={4}
+                  onChange={(event) => setAccessPassword(event.target.value)}
+                  placeholder="至少 4 位"
+                  required
+                  type="password"
+                  value={accessPassword}
+                />
+              </label>
+              <button className="primary-button" type="submit">保存设置</button>
+            </form>
+
+            <form className="settings-section" onSubmit={(event) => uploadPageFile(event, "reupload")}>
+              <h3>重新上传当前 HTML</h3>
+              <p className="muted">用于恢复或修补服务器上的当前文件，不新增版本，当前评论图标保持显示。</p>
+              <label className="field">
+                <span>选择 .html / .htm / .zip</span>
+                <input ref={reuploadInputRef} accept=".html,.htm,.zip" type="file" />
+              </label>
+              <button className="secondary-button" disabled={uploadingPageFile === "reupload"} type="submit">
+                <FileUp size={16} />
+                {uploadingPageFile === "reupload" ? "上传中" : "重新上传"}
+              </button>
+            </form>
+
+            <form className="settings-section" onSubmit={(event) => uploadPageFile(event, "update")}>
+              <h3>更新为新版 HTML</h3>
+              <p className="muted">
+                上传后变为{versionLabel(currentVersion + 1)}。旧版本评论仍保留在列表中，但不会在新版页面上显示图标。
+              </p>
+              <label className="field">
+                <span>选择 .html / .htm / .zip</span>
+                <input ref={updateInputRef} accept=".html,.htm,.zip" type="file" />
+              </label>
+              <button className="primary-button" disabled={uploadingPageFile === "update"} type="submit">
+                <FileUp size={16} />
+                {uploadingPageFile === "update" ? "更新中" : `更新为${versionLabel(currentVersion + 1)}`}
+              </button>
+            </form>
+
             {settingsError ? <p className="error-text">{settingsError}</p> : null}
             {settingsNotice ? <p className="success-text">{settingsNotice}</p> : null}
-            <button className="primary-button" type="submit">保存设置</button>
-          </form>
+          </div>
         </div>
       ) : null}
 
@@ -617,10 +728,12 @@ export function ReviewWorkspace({
 
 function CommentDrawer({
   comments,
+  currentVersion,
   onClose,
   onSelect,
 }: {
   comments: SerializedComment[];
+  currentVersion: number;
   onClose: () => void;
   onSelect: (comment: SerializedComment) => void;
 }) {
@@ -642,7 +755,9 @@ function CommentDrawer({
               <span>
                 <strong>{comment.authorName}</strong>
                 <small>
-                  {comment.status === "resolved" ? "已处理" : "待处理"} · {comment.replies.length} 条回复
+                  {versionLabel(comment.pageVersion)} · {comment.status === "resolved" ? "已处理" : "待处理"} ·{" "}
+                  {comment.replies.length} 条回复
+                  {pageVersion(comment.pageVersion) !== currentVersion ? " · 旧版本" : ""}
                 </small>
                 <em>{comment.body}</em>
               </span>
@@ -724,7 +839,9 @@ function CommentDetail({
         <div>
           <div className="detail-meta">
             <strong>{comment.authorName}</strong>
-            <small>{relativeTime(comment.createdAt)}</small>
+            <small>
+              {relativeTime(comment.createdAt)} · {versionLabel(comment.pageVersion)}
+            </small>
             {comment.canDelete ? (
               <button className="menu-button" onClick={() => onDeleteComment(comment)} title="删除评论" type="button">
                 <Trash2 size={16} />

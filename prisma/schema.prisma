@@ -19,6 +19,7 @@ model Page {
   entryPath    String
   uploadType   String
   originalName String
+  currentVersion Int      @default(1)
   accessPasswordHash String?
   comments     Comment[]
   createdAt    DateTime  @default(now())
@@ -29,6 +30,7 @@ model Comment {
   id          String   @id
   pageId      String
   page        Page     @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  pageVersion Int      @default(1)
   authorName  String
   authorIdentityId String?
   body        String
@@ -43,7 +45,7 @@ model Comment {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  @@index([pageId, createdAt])
+  @@index([pageId, pageVersion, createdAt])
   @@index([authorIdentityId])
 }
 

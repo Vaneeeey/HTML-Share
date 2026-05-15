@@ -530,12 +530,28 @@ h2 {
 }
 
 .review-topbar h1 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 18px;
   line-height: 1.15;
   max-width: min(52vw, 760px);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.version-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: #e9f6ff;
+  color: #0865a8;
+  font-size: 12px;
+  font-weight: 900;
+  flex: 0 0 auto;
 }
 
 .identity-chip {
@@ -928,6 +944,22 @@ h2 {
   border: 1px solid #d8d8d8;
   background: #fff;
   box-shadow: 0 24px 70px rgba(15, 23, 42, 0.24);
+}
+
+.settings-section {
+  display: grid;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid #e7e7e7;
+}
+
+.settings-section h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.settings-section .muted {
+  font-size: 13px;
 }
 
 .identity-modal {

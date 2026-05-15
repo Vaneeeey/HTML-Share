@@ -21,6 +21,7 @@ export function serializePage(page: Page & { _count?: { comments: number } }) {
     entryPath: page.entryPath,
     uploadType: page.uploadType,
     originalName: page.originalName,
+    currentVersion: page.currentVersion,
     hasAccessPassword: Boolean(page.accessPasswordHash),
     createdAt: page.createdAt.toISOString(),
     updatedAt: page.updatedAt.toISOString(),
@@ -47,6 +48,7 @@ export function serializeComment(comment: CommentWithReplies, viewer: Viewer = {
   return {
     id: comment.id,
     pageId: comment.pageId,
+    pageVersion: comment.pageVersion,
     authorName: comment.authorName,
     body: comment.body,
     selector: comment.selector,

@@ -133,7 +133,8 @@ export function DashboardClient({ identityName, initialPages }: Props) {
                 <div>
                   <p className="page-title">{page.title}</p>
                   <p className="muted">
-                    {page.originalName} · {page.uploadType.toUpperCase()} · {page.commentCount} 条评论 ·{" "}
+                    {page.originalName} · {page.uploadType.toUpperCase()} · 第{page.currentVersion}版 ·{" "}
+                    {page.commentCount} 条评论 ·{" "}
                     {page.hasAccessPassword ? "已设置访问密码" : "未设置访问密码"}
                   </p>
                 </div>

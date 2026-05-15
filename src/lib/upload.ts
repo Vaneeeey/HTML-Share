@@ -76,9 +76,8 @@ function extractTitle(html: string, fallback: string) {
   return title || fallback.replace(/\.(html?|zip)$/i, "") || "Untitled page";
 }
 
-async function writeSingleHtml(file: File, pageId: string) {
+async function writeSingleHtmlToDir(file: File, dir: string) {
   const bytes = Buffer.from(await file.arrayBuffer());
-  const dir = pageUploadDir(pageId);
   await fs.mkdir(dir, { recursive: true });
   await fs.writeFile(path.join(dir, "index.html"), bytes);
 
@@ -88,9 +87,8 @@ async function writeSingleHtml(file: File, pageId: string) {
   };
 }
 
-async function writeZip(file: File, pageId: string) {
+async function writeZipToDir(file: File, dir: string) {
   const bytes = Buffer.from(await file.arrayBuffer());
-  const dir = pageUploadDir(pageId);
   const archive = new AdmZip(bytes);
   const writableEntries: Array<{ path: string; buffer: Buffer }> = [];
   const htmlByPath = new Map<string, string>();
@@ -125,6 +123,13 @@ async function writeZip(file: File, pageId: string) {
   };
 }
 
+async function writeUploadToDir(file: File, dir: string) {
+  const kind = detectKind(file);
+  assertSize(file, kind);
+  const written = kind === "html" ? await writeSingleHtmlToDir(file, dir) : await writeZipToDir(file, dir);
+  return { kind, ...written };
+}
+
 export async function createPageFromUpload(file: File, accessPassword: unknown) {
   const kind = detectKind(file);
   assertSize(file, kind);
@@ -134,8 +139,7 @@ export async function createPageFromUpload(file: File, accessPassword: unknown) 
   const dir = pageUploadDir(pageId);
 
   try {
-    const written =
-      kind === "html" ? await writeSingleHtml(file, pageId) : await writeZip(file, pageId);
+    const written = await writeUploadToDir(file, dir);
 
     return await prisma.page.create({
       data: {
@@ -150,6 +154,57 @@ export async function createPageFromUpload(file: File, accessPassword: unknown) 
     });
   } catch (error) {
     await fs.rm(dir, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+export async function replacePageUpload(pageId: string, file: File, incrementVersion: boolean) {
+  const page = await prisma.page.findUnique({ where: { id: pageId } });
+  if (!page) fail("Page not found.");
+
+  const dir = pageUploadDir(pageId);
+  const parentDir = path.dirname(dir);
+  const tmpDir = path.join(parentDir, `.${pageId}-${Date.now()}-${newId()}`);
+  const backupDir = path.join(parentDir, `.${pageId}-backup-${Date.now()}-${newId()}`);
+
+  try {
+    const written = await writeUploadToDir(file, tmpDir);
+
+    await fs.mkdir(parentDir, { recursive: true });
+    await fs.rm(backupDir, { recursive: true, force: true });
+    try {
+      await fs.rename(dir, backupDir);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== "ENOENT") throw error;
+    }
+    await fs.rename(tmpDir, dir);
+    await fs.rm(backupDir, { recursive: true, force: true });
+
+    return await prisma.page.update({
+      where: { id: pageId },
+      data: {
+        title: written.title,
+        entryPath: written.entryPath,
+        uploadType: written.kind,
+        originalName: file.name,
+        currentVersion: incrementVersion ? { increment: 1 } : undefined,
+      },
+      include: {
+        comments: {
+          include: { replies: { orderBy: { createdAt: "asc" } } },
+          orderBy: { createdAt: "asc" },
+        },
+        _count: { select: { comments: true } },
+      },
+    });
+  } catch (error) {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+    try {
+      await fs.access(backupDir);
+      await fs.rm(dir, { recursive: true, force: true });
+      await fs.rename(backupDir, dir);
+    } catch {}
     throw error;
   }
 }
